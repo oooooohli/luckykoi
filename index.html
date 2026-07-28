@@ -447,6 +447,7 @@
         <button id="checkinItemConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">保存</button>
       </div>
       <button id="archiveItemBtn" class="w-full py-3 rounded-xl border border-orange-200 text-orange-500 font-semibold text-sm hover:bg-orange-50 transition active:scale-95">📦 归档此打卡项</button>
+      <button id="deleteItemBtn" class="w-full py-3 rounded-xl border border-red-200 text-red-400 font-semibold text-sm hover:bg-red-50 transition active:scale-95 mt-2 hidden">🗑 删除此打卡项</button>
     </div>
   </div>
 
@@ -480,9 +481,9 @@ const IDB_NAME = 'luckyKoiDB';
 const IDB_STORE = 'images';
 
 const DEFAULT_CHECKIN_ITEMS = [
-  { id:'item_sport', title:'运动', icon:'🏃', color:'#22c55e', builtin:true, archived:false },
-  { id:'item_sleep', title:'早睡', icon:'🌙', color:'#6366f1', builtin:true, archived:false },
-  { id:'item_supplement', title:'吃补剂', icon:'💊', color:'#f97316', builtin:true, archived:false },
+  { id:'item_sport', title:'运动', icon:'🏃', color:'#22c55e', builtin:true, archived:false, parentId:null },
+  { id:'item_sleep', title:'早睡', icon:'🌙', color:'#6366f1', builtin:true, archived:false, parentId:null },
+  { id:'item_supplement', title:'吃补剂', icon:'💊', color:'#f97316', builtin:true, archived:false, parentId:null },
 ];
 
 const COLOR_OPTIONS = ['#22c55e','#6366f1','#f97316','#a855f7','#ec4899','#14b8a6','#eab308','#ef4444','#3b82f6','#84cc16'];
@@ -569,6 +570,8 @@ function saveCheckinItems(d) { localStorage.setItem(STORAGE_ITEMS, JSON.stringif
 
 function getActiveItems() { return getCheckinItems().filter(i => !i.archived); }
 function getArchivedItems() { return getCheckinItems().filter(i => i.archived); }
+function getTopLevelItems() { return getActiveItems().filter(i => !i.parentId); }
+function getChildren(parentId) { return getActiveItems().filter(i => i.parentId === parentId); }
 
 function getArchives() { try { return JSON.parse(localStorage.getItem(STORAGE_ARCHIVES)||'[]'); } catch(e) { return []; } }
 function saveArchives(d) { localStorage.setItem(STORAGE_ARCHIVES, JSON.stringify(d)); }
@@ -823,10 +826,11 @@ function renderHome() {
 function renderCheckin() {
   const date = todayStr();
   const all = getCheckins();
-  const items = getActiveItems();
+  const topItems = getTopLevelItems();
+  const allActive = getActiveItems();
   const today = all[date] || {};
-  const doneCount = items.filter(i => today[i.id]).length;
-  const total = items.length;
+  const doneCount = allActive.filter(i => today[i.id]).length;
+  const total = allActive.length;
 
   document.getElementById('progressText').textContent = `${doneCount}/${total}`;
   document.getElementById('progressBar').style.width = total ? `${(doneCount/total)*100}%` : '0%';
@@ -834,35 +838,96 @@ function renderCheckin() {
   const hintIdx = total ? Math.min(Math.floor((doneCount/total)*3), 3) : 0;
   document.getElementById('progressHint').textContent = hints[hintIdx];
 
-  // 渲染卡片
+  // 渲染树形卡片
   const cards = document.getElementById('checkinCards');
-  cards.innerHTML = items.map(item => `
-    <div class="checkin-card bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between border-2 border-transparent ${today[item.id]?'checked':''}" data-key="${item.id}" style="border-color:${today[item.id]?item.color:'transparent'}">
-      <div class="flex items-center gap-3">
-        <span class="text-3xl">${item.icon}</span>
-        <div>
-          <div class="font-semibold text-gray-800">${escapeHtml(item.title)}</div>
-          <div class="text-xs text-gray-400">点击切换状态</div>
+  cards.innerHTML = topItems.map(item => {
+    const children = getChildren(item.id);
+    const childDone = children.filter(c => today[c.id]).length;
+    const allChildDone = children.length > 0 && childDone === children.length;
+    const hasChildren = children.length > 0;
+    // 父级自身是否勾选（如果无子项则看自身，有子项则看全部子项）
+    const parentChecked = hasChildren ? allChildDone : today[item.id];
+
+    return `
+    <div class="checkin-group" data-id="${item.id}">
+      <!-- 父级 -->
+      <div class="checkin-card bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between border-2 border-transparent ${parentChecked?'checked':''}" data-key="${item.id}" style="border-color:${parentChecked?item.color:'transparent'}">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">${item.icon}</span>
+          <div>
+            <div class="font-semibold text-gray-800">${escapeHtml(item.title)}</div>
+            <div class="text-xs text-gray-400">${hasChildren ? `${childDone}/${children.length} 项完成` : '点击切换状态'}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          ${hasChildren ? `<svg class="w-4 h-4 text-gray-300 transition-transform duration-300 checkin-chevron" data-id="${item.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>` : ''}
+          <button class="checkin-edit-btn w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 transition" data-key="${item.id}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          </button>
+          <div class="check-mark w-8 h-8 rounded-full flex items-center justify-center" style="background:${item.color}">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+          </div>
         </div>
       </div>
-      <div class="flex items-center gap-1">
-        <button class="checkin-edit-btn w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 transition" data-key="${item.id}">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      <!-- 子项列表 -->
+      <div class="checkin-children" data-id="${item.id}" style="max-height:0;overflow:hidden;transition:max-height 0.3s ease,opacity 0.25s;opacity:0;">
+        ${children.map(c => `
+          <div class="checkin-card bg-white rounded-2xl shadow-sm px-4 py-3 ml-4 mb-2 flex items-center justify-between border-2 border-transparent ${today[c.id]?'checked':''}" data-key="${c.id}" data-parent="${item.id}" style="border-color:${today[c.id]?c.color:'transparent'}">
+            <div class="flex items-center gap-2.5">
+              <span class="text-2xl">${c.icon}</span>
+              <div>
+                <div class="font-semibold text-gray-700 text-sm">${escapeHtml(c.title)}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="checkin-edit-btn w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 transition" data-key="${c.id}">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              </button>
+              <div class="check-mark w-7 h-7 rounded-full flex items-center justify-center" style="background:${c.color}">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+        <button class="add-child-btn w-full py-2 ml-4 mb-2 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs flex items-center justify-center gap-1 hover:border-teal-300 hover:text-teal-500 transition" data-parent="${item.id}">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+          添加子项
         </button>
-        <div class="check-mark w-8 h-8 rounded-full flex items-center justify-center" style="background:${item.color}">
-          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
-        </div>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   // 绑定事件
-  cards.querySelectorAll('.checkin-card').forEach(card => {
+  bindCheckinEvents();
+  renderArchiveArea();
+  renderSummary();
+}
+
+function bindCheckinEvents() {
+  const cards = document.getElementById('checkinCards');
+
+  // 父级卡片点击 → 展开/折叠子项（如果有子项）
+  cards.querySelectorAll('.checkin-card[data-key]').forEach(card => {
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.checkin-edit-btn')) return;
-      toggleCheckin(card.dataset.key);
+      if (e.target.closest('.checkin-edit-btn') || e.target.closest('.add-child-btn')) return;
+      const key = card.dataset.key;
+      const parent = card.dataset.parent;
+      const group = card.closest('.checkin-group');
+      const childrenContainer = group ? group.querySelector('.checkin-children') : null;
+      const hasChildren = childrenContainer && childrenContainer.querySelector('.checkin-card[data-parent]');
+      const chevron = group ? group.querySelector('.checkin-chevron') : null;
+
+      if (hasChildren && !parent) {
+        // 父级有子项 → 展开/折叠
+        toggleChildren(group.dataset.id);
+      } else {
+        // 无子项的父级 或 子项 → 直接 toggle
+        toggleCheckin(key);
+      }
     });
   });
+
+  // 编辑按钮
   cards.querySelectorAll('.checkin-edit-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -870,9 +935,29 @@ function renderCheckin() {
     });
   });
 
-  // 归档区
-  renderArchiveArea();
-  renderSummary();
+  // 添加子项按钮
+  cards.querySelectorAll('.add-child-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      addChildItem(btn.dataset.parent);
+    });
+  });
+}
+
+function toggleChildren(parentId) {
+  const container = document.querySelector(`.checkin-children[data-id="${parentId}"]`);
+  const chevron = document.querySelector(`.checkin-chevron[data-id="${parentId}"]`);
+  if (!container) return;
+  const isOpen = container.style.maxHeight !== '0px' && container.style.maxHeight !== '';
+  if (isOpen) {
+    container.style.maxHeight = '0px';
+    container.style.opacity = '0';
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+  } else {
+    container.style.maxHeight = container.scrollHeight + 'px';
+    container.style.opacity = '1';
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+  }
 }
 
 function toggleCheckin(key) {
@@ -883,6 +968,34 @@ function toggleCheckin(key) {
   saveCheckins(all);
   renderCheckin();
   if (currentPage === 'home') renderHome();
+}
+
+function addChildItem(parentId) {
+  const name = prompt('请���入子项名称：');
+  if (!name || !name.trim()) return;
+  const parent = getCheckinItems().find(i => i.id === parentId);
+  const icons = ['🧘','🏊','🚴','🏋','🤸','🎾','⚽','🏀','🏈','🎯','💪','🦵','🤾','⛹','🏌'];
+  const newItem = {
+    id: 'item_' + Date.now(),
+    title: name.trim(),
+    icon: icons[Math.floor(Math.random()*icons.length)],
+    color: parent ? parent.color : '#22c55e',
+    builtin: false, archived: false, parentId
+  };
+  const items = getCheckinItems();
+  items.push(newItem);
+  saveCheckinItems(items);
+  // 自动展开父级
+  setTimeout(() => {
+    const container = document.querySelector(`.checkin-children[data-id="${parentId}"]`);
+    if (container) {
+      container.style.maxHeight = container.scrollHeight + 'px';
+      container.style.opacity = '1';
+      const chevron = document.querySelector(`.checkin-chevron[data-id="${parentId}"]`);
+      if (chevron) chevron.style.transform = 'rotate(180deg)';
+    }
+  }, 100);
+  renderCheckin();
 }
 
 // ==================== 打卡项编辑 ====================
@@ -928,6 +1041,10 @@ function openCheckinItemModal(id) {
   });
 
   document.getElementById('checkinItemModal').classList.add('open');
+
+  // 子项或非内置项显示删除按钮，父级预置项隐藏
+  const deleteBtn = document.getElementById('deleteItemBtn');
+  deleteBtn.classList.toggle('hidden', item.builtin && !item.parentId);
 }
 
 function closeCheckinItemModal() {
@@ -950,6 +1067,24 @@ function confirmCheckinItem() {
   renderCheckin();
 }
 
+function deleteCheckinItem() {
+  if (!confirm('确定删除此打卡项吗？相关打卡数据也将被清除。')) return;
+  const id = editingCheckinItemId;
+  // 删除子项
+  const items = getCheckinItems();
+  const children = items.filter(i => i.parentId === id);
+  saveCheckinItems(items.filter(i => i.id !== id && i.parentId !== id));
+  // 清除打卡数据
+  const all = getCheckins();
+  for (const date of Object.keys(all)) {
+    delete all[date][id];
+    children.forEach(c => delete all[date][c.id]);
+  }
+  saveCheckins(all);
+  closeCheckinItemModal();
+  renderCheckin();
+}
+
 function addCheckinItem() {
   const name = prompt('请输入新打卡项名称：');
   if (!name || !name.trim()) return;
@@ -960,7 +1095,7 @@ function addCheckinItem() {
     title: name.trim(),
     icon: icons[Math.floor(Math.random()*icons.length)],
     color: COLOR_OPTIONS[Math.floor(Math.random()*COLOR_OPTIONS.length)],
-    builtin: false, archived: false
+    builtin: false, archived: false, parentId: null
   };
   items.push(newItem);
   saveCheckinItems(items);
@@ -1715,6 +1850,7 @@ function bindEvents() {
     if (e.target === e.currentTarget) closeCheckinItemModal();
   });
   document.getElementById('archiveItemBtn').addEventListener('click', openArchiveConfirm);
+  document.getElementById('deleteItemBtn').addEventListener('click', deleteCheckinItem);
   document.getElementById('archiveNoteCancel').addEventListener('click', closeArchiveNoteModal);
   document.getElementById('archiveNoteConfirm').addEventListener('click', confirmArchive);
   document.getElementById('archiveNoteModal').addEventListener('click', (e) => {
