@@ -883,19 +883,19 @@ function renderCheckin() {
     <div class="checkin-group" data-id="${item.id}">
       <!-- 父级 -->
       <div class="checkin-card bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between border-2 border-transparent ${parentChecked?'checked':''}" data-key="${item.id}" style="border-color:${parentChecked?item.color:'transparent'}">
-        <div class="flex items-center gap-3">
+        <div class="checkin-main flex items-center gap-3 flex-1" data-key="${item.id}">
           <span class="text-3xl">${item.icon}</span>
           <div>
             <div class="font-semibold text-gray-800">${escapeHtml(item.title)}</div>
-            <div class="text-xs text-gray-400">${hasChildren ? `${childDone}/${children.length} 项完成` : '点击切换状态'}</div>
+            <div class="text-xs text-gray-400">${hasChildren ? `${childDone}/${children.length} 项完成 · 点击展开` : '点击切换状态'}</div>
           </div>
         </div>
         <div class="flex items-center gap-1">
-          ${hasChildren ? `<svg class="w-4 h-4 text-gray-300 transition-transform duration-300 checkin-chevron" data-id="${item.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>` : ''}
+          ${hasChildren ? `<svg class="checkin-chevron w-4 h-4 text-gray-300 transition-transform duration-300" data-id="${item.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>` : ''}
           <button class="checkin-edit-btn w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 transition" data-key="${item.id}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
           </button>
-          <div class="check-mark w-8 h-8 rounded-full flex items-center justify-center" style="background:${item.color}">
+          <div class="checkin-check w-8 h-8 rounded-full flex items-center justify-center ${hasChildren?'hidden':''}" style="background:${item.color}" data-key="${item.id}">
             <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
           </div>
         </div>
@@ -937,24 +937,35 @@ function renderCheckin() {
 function bindCheckinEvents() {
   const cards = document.getElementById('checkinCards');
 
-  // 父级卡片点击 → 展开/折叠子项（如果有子项）
-  cards.querySelectorAll('.checkin-card[data-key]').forEach(card => {
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.checkin-edit-btn') || e.target.closest('.add-child-btn')) return;
-      const key = card.dataset.key;
-      const parent = card.dataset.parent;
-      const group = card.closest('.checkin-group');
-      const childrenContainer = group ? group.querySelector('.checkin-children') : null;
-      const hasChildren = childrenContainer && childrenContainer.querySelector('.checkin-card[data-parent]');
-      const chevron = group ? group.querySelector('.checkin-chevron') : null;
-
-      if (hasChildren && !parent) {
-        // 父级有子项 → 展开/折叠
-        toggleChildren(group.dataset.id);
+  // 父级左侧主区域点击 → 展开/折叠子项（如果有子项）
+  cards.querySelectorAll('.checkin-main').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = el.dataset.key;
+      const item = getCheckinItems().find(i => i.id === key);
+      if (!item) return;
+      const children = getChildren(key);
+      if (children.length > 0) {
+        toggleChildren(key);
       } else {
-        // 无子项的父级 或 子项 → 直接 toggle
         toggleCheckin(key);
       }
+    });
+  });
+
+  // 父级勾选按钮（无子项时显示）
+  cards.querySelectorAll('.checkin-check').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleCheckin(el.dataset.key);
+    });
+  });
+
+  // 子项卡片点击 → 切换状态
+  cards.querySelectorAll('.checkin-card[data-parent]').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.checkin-edit-btn')) return;
+      toggleCheckin(card.dataset.key);
     });
   });
 
