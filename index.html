@@ -329,7 +329,15 @@
     </div>
 
     <!-- ===== 自定义板块容器 ===== -->
-    <div class="page-content" id="page-custom-template" style="display:none !important"></div>
+    <div class="page-content" id="page-custom-template" style="display:none !important">
+      <div id="customPageContent" class="space-y-3">
+        <!-- 动态渲染笔记卡片 -->
+      </div>
+      <button id="addNoteBtn" class="w-full py-3 mt-4 rounded-xl border-2 border-dashed border-teal-300 text-teal-600 font-semibold text-sm flex items-center justify-center gap-1.5 hover:bg-teal-50 transition active:scale-95">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+        添加笔记
+      </button>
+    </div>
   </main>
 
   <!-- ========== 底部栏：回到首页 ========== -->
@@ -503,6 +511,7 @@ const STORAGE_ITEMS   = 'luckyKoi.checkinItems';
 const STORAGE_ARCHIVES= 'luckyKoi.archives';
 const STORAGE_METRICS = 'luckyKoi.metrics';
 const STORAGE_METRIC_CFG = 'luckyKoi.metricConfig';
+const STORAGE_NOTES = 'luckyKoi.notes';
 const IDB_NAME = 'luckyKoiDB';
 const IDB_STORE = 'images';
 
@@ -544,6 +553,12 @@ function ensureMetricConfig(itemId) {
   saveMetricConfig(cfg);
   return cfg[itemId];
 }
+
+// 笔记数据：{ "custom_xxx": [{ id, text, images:["data:..."] }, ...] }
+function getNotes() { try { return JSON.parse(localStorage.getItem(STORAGE_NOTES)||'{}'); } catch(e) { return {}; } }
+function saveNotes(d) { localStorage.setItem(STORAGE_NOTES, JSON.stringify(d)); }
+function getSectionNotes(sectionId) { const all = getNotes(); return all[sectionId] || []; }
+function saveSectionNotes(sectionId, notes) { const all = getNotes(); all[sectionId] = notes; saveNotes(all); }
 
 function getTodos() { try { return JSON.parse(localStorage.getItem(STORAGE_TODOS)||'[]'); } catch(e) { return []; } }
 function saveTodos(d) { localStorage.setItem(STORAGE_TODOS, JSON.stringify(d)); }
@@ -730,7 +745,18 @@ function navigateTo(pageId, title) {
   // 切换页面
   currentPage = pageId;
   document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
-  const target = document.getElementById('page-' + pageId);
+
+  let target = document.getElementById('page-' + pageId);
+  if (!target && pageId.startsWith('custom_')) {
+    // 自定义板块：复制模板
+    const template = document.getElementById('page-custom-template');
+    target = template.cloneNode(true);
+    target.id = 'page-' + pageId;
+    target.style.display = '';
+    template.parentNode.appendChild(target);
+    // 绑定添加笔记按钮
+    target.querySelector('#addNoteBtn').addEventListener('click', () => addNote(pageId));
+  }
   if (target) target.classList.add('active');
   document.getElementById('pageTitle').textContent = title || '幸运鲤的工作台';
 
@@ -739,6 +765,7 @@ function navigateTo(pageId, title) {
   if (pageId === 'todo') renderTodo();
   if (pageId === 'books') renderBooks();
   if (pageId === 'home') renderHome();
+  if (pageId.startsWith('custom_')) renderCustomPage(pageId);
 
   // 更新抽屉高亮
   renderDrawer();
@@ -851,6 +878,221 @@ function closeSectionModal() {
   document.getElementById('sectionModal').classList.remove('open');
   editingSectionId = null;
   document.getElementById('sectionNameInput').value = '';
+}
+
+// ==================== 自定义板块（笔记） ====================
+function renderCustomPage(sectionId) {
+  const container = document.getElementById('customPageContent');
+  if (!container) return;
+  const notes = getSectionNotes(sectionId);
+
+  if (notes.length === 0) {
+    container.innerHTML = `
+      <div class="text-center text-gray-400 py-12">
+        <div class="text-4xl mb-3">📝</div>
+        <p class="text-sm">还没有笔记</p>
+        <p class="text-xs mt-1">点击下方按钮添加第一条笔记</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = notes.map((note, idx) => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 note-card" data-idx="${idx}">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-gray-400">${note.time || ''}</span>
+        <div class="flex gap-1">
+          <button class="note-edit-btn w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-teal-500 hover:bg-teal-50 transition" data-idx="${idx}">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          </button>
+          <button class="note-del-btn w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition" data-idx="${idx}">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      ${note.text ? `<div class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed note-text" data-idx="${idx}">${escapeHtml(note.text)}</div>` : ''}
+      ${note.images && note.images.length > 0 ? `
+        <div class="grid grid-cols-2 gap-2 mt-2">
+          ${note.images.map((img, iidx) => `
+            <div class="relative rounded-xl overflow-hidden bg-gray-100" style="aspect-ratio:1">
+              <img src="${img}" class="w-full h-full object-cover" onclick="this.requestFullscreen?.()">
+              <button class="note-img-del-btn absolute top-1 right-1 w-5 h-5 rounded-full bg-black/40 text-white text-xs flex items-center justify-center" data-note-idx="${idx}" data-img-idx="${iidx}">×</button>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+
+  // 绑定事件
+  container.querySelectorAll('.note-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteNote(sectionId, parseInt(btn.dataset.idx)));
+  });
+  container.querySelectorAll('.note-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => openNoteEditor(sectionId, parseInt(btn.dataset.idx)));
+  });
+  container.querySelectorAll('.note-text').forEach(el => {
+    el.addEventListener('dblclick', () => openNoteEditor(sectionId, parseInt(el.dataset.idx)));
+  });
+  container.querySelectorAll('.note-img-del-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeNoteImage(sectionId, parseInt(btn.dataset.noteIdx), parseInt(btn.dataset.imgIdx));
+    });
+  });
+}
+
+function addNote(sectionId) {
+  openNoteEditor(sectionId, -1);
+}
+
+function openNoteEditor(sectionId, idx) {
+  const notes = getSectionNotes(sectionId);
+  const note = idx >= 0 ? notes[idx] : { text: '', images: [], time: '' };
+  const isNew = idx < 0;
+
+  const existing = document.getElementById('noteEditorOverlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'noteEditorOverlay';
+  overlay.className = 'fixed inset-0 bg-black/40 z-70 flex items-end justify-center';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.innerHTML = `
+    <div class="bg-white rounded-t-3xl w-full max-w-lg p-5 animate-slide-up" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-800">${isNew ? '新建笔记' : '编辑笔记'}</h3>
+        <button class="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition" onclick="document.getElementById('noteEditorOverlay').remove()">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- 文字 -->
+      <textarea id="noteTextInput" class="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition mb-3" rows="5" placeholder="输入笔记内容...">${escapeHtml(note.text)}</textarea>
+
+      <!-- 图片区域 -->
+      <div class="mb-3">
+        <div class="text-xs text-gray-500 mb-2 font-semibold">图片</div>
+        <div id="noteImagePreview" class="grid grid-cols-3 gap-2 mb-2">
+          ${note.images.map((img, iidx) => `
+            <div class="relative rounded-xl overflow-hidden bg-gray-100" style="aspect-ratio:1">
+              <img src="${img}" class="w-full h-full object-cover">
+              <button class="note-editor-img-del absolute top-1 right-1 w-5 h-5 rounded-full bg-black/40 text-white text-xs flex items-center justify-center" data-idx="${iidx}">×</button>
+            </div>
+          `).join('')}
+        </div>
+        <label class="flex items-center justify-center gap-1 py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-xs cursor-pointer hover:border-teal-300 hover:text-teal-500 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          添加图片
+          <input type="file" accept="image/*" multiple id="noteImageInput" class="hidden">
+        </label>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="noteEditorCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
+        <button id="noteEditorSave" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">保存</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // 临时图片存储
+  let tempImages = [...note.images];
+
+  // 添加图片事件
+  overlay.querySelector('#noteImageInput').addEventListener('change', (e) => {
+    const files = e.target.files;
+    if (!files.length) return;
+    let loaded = 0;
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        tempImages.push(ev.target.result);
+        loaded++;
+        if (loaded === files.length) updateImagePreview(overlay, tempImages);
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+
+  // 删除图片事件
+  overlay.querySelectorAll('.note-editor-img-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      tempImages.splice(parseInt(btn.dataset.idx), 1);
+      updateImagePreview(overlay, tempImages);
+    });
+  });
+
+  // 取消
+  overlay.querySelector('#noteEditorCancel').addEventListener('click', () => overlay.remove());
+
+  // 保存
+  overlay.querySelector('#noteEditorSave').addEventListener('click', () => {
+    const text = overlay.querySelector('#noteTextInput').value.trim();
+    if (!text && tempImages.length === 0) { overlay.remove(); return; }
+
+    const now = new Date();
+    const timeStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+    const notes = getSectionNotes(sectionId);
+    const newNote = { text, images: tempImages, time: timeStr };
+
+    if (idx >= 0) {
+      notes[idx] = newNote;
+    } else {
+      notes.unshift(newNote);
+    }
+    saveSectionNotes(sectionId, notes);
+    overlay.remove();
+    renderCustomPage(sectionId);
+  });
+
+  // 动画
+  requestAnimationFrame(() => {
+    const sheet = overlay.querySelector('.animate-slide-up');
+    if (sheet) {
+      sheet.style.transform = 'translateY(100%)';
+      sheet.style.transition = 'transform 0.3s ease-out';
+      requestAnimationFrame(() => { sheet.style.transform = 'translateY(0)'; });
+    }
+  });
+}
+
+function updateImagePreview(overlay, images) {
+  const preview = overlay.querySelector('#noteImagePreview');
+  if (!preview) return;
+  preview.innerHTML = images.map((img, iidx) => `
+    <div class="relative rounded-xl overflow-hidden bg-gray-100" style="aspect-ratio:1">
+      <img src="${img}" class="w-full h-full object-cover">
+      <button class="note-editor-img-del absolute top-1 right-1 w-5 h-5 rounded-full bg-black/40 text-white text-xs flex items-center justify-center" data-idx="${iidx}">×</button>
+    </div>
+  `).join('');
+  preview.querySelectorAll('.note-editor-img-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      images.splice(parseInt(btn.dataset.idx), 1);
+      updateImagePreview(overlay, images);
+    });
+  });
+}
+
+function deleteNote(sectionId, idx) {
+  if (!confirm('确定删除这条笔记吗？')) return;
+  const notes = getSectionNotes(sectionId);
+  notes.splice(idx, 1);
+  saveSectionNotes(sectionId, notes);
+  renderCustomPage(sectionId);
+}
+
+function removeNoteImage(sectionId, noteIdx, imgIdx) {
+  const notes = getSectionNotes(sectionId);
+  if (notes[noteIdx]) {
+    notes[noteIdx].images.splice(imgIdx, 1);
+    saveSectionNotes(sectionId, notes);
+    renderCustomPage(sectionId);
+  }
 }
 
 // ==================== 首页概览 ====================
