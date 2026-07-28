@@ -736,18 +736,29 @@ function init() {
   }
 }
 
-// 检测数据路径：提醒用户使用正确的URL
+// 检测数据路径：提醒用户使用正确的URL，并显示数据诊断
 function checkDataPath() {
-  const path = location.pathname;
-  const correctPath = '/luckykoi/index.html';
   const bar = document.getElementById('dataStatusBar');
   if (!bar) return;
 
+  const notes = getNotes();
+  const sections = getSections();
+  const checkins = getCheckins();
+  const notesCount = Object.values(notes).reduce((sum, arr) => sum + arr.length, 0);
+  const checkinCount = Object.values(checkins).filter(d => Object.values(d).some(v => v)).length;
+
+  const path = location.pathname;
+  const correctPath = '/luckykoi/index.html';
+
+  let msg = `📝笔记${notesCount}条 · ✅打卡${checkinCount}天 · 📂板块${sections.length}个`;
   if (path !== correctPath) {
+    msg += ` · ⚠️ 路径不对，请用正确链接打开`;
     bar.classList.remove('hidden');
-    bar.innerHTML = `⚠️ 当前路径: <code>${path}</code>，数据路径: <code>${correctPath}</code><br>请使用 <a href="${correctPath}" class="underline font-bold text-teal-600">正确链接</a> 打开以恢复数据`;
+    bar.innerHTML = msg;
   } else {
-    bar.classList.add('hidden');
+    bar.classList.remove('hidden');
+    bar.className = 'sticky top-[52px] z-20 bg-teal-50 border-b border-teal-200 px-4 py-2 text-xs text-teal-700 text-center';
+    bar.innerHTML = msg;
   }
 }
 
