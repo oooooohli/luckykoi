@@ -838,7 +838,23 @@ function renderHome() {
 }
 
 // ==================== 每日打卡 ====================
+function ensureDataOk() {
+  // 确保 checkinItems 数据格式完整
+  const items = getCheckinItems();
+  let fixed = false;
+  items.forEach(i => {
+    if (!i.id || i.parentId===undefined || i.archived===undefined || !i.color || !i.title) {
+      // 数据损坏，重建
+      fixed = true;
+    }
+  });
+  if (fixed || items.length===0) {
+    saveCheckinItems(DEFAULT_CHECKIN_ITEMS.map(i=>({...i})));
+  }
+}
+
 function renderCheckin() {
+  ensureDataOk();
   const date = todayStr();
   const all = getCheckins();
   const topItems = getTopLevelItems();
