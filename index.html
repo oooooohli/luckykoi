@@ -329,7 +329,7 @@
     </div>
 
     <!-- ===== 自定义板块容器 ===== -->
-    <div class="page-content" id="page-custom-template" style="display:none !important">
+    <div class="page-content" id="page-custom-template">
       <div id="customPageContent" class="space-y-3">
         <!-- 动态渲染笔记卡片 -->
       </div>
@@ -752,7 +752,7 @@ function navigateTo(pageId, title) {
     const template = document.getElementById('page-custom-template');
     target = template.cloneNode(true);
     target.id = 'page-' + pageId;
-    target.style.display = '';
+    target.removeAttribute('style');
     template.parentNode.appendChild(target);
     // 绑定添加笔记按钮
     target.querySelector('#addNoteBtn').addEventListener('click', () => addNote(pageId));
@@ -882,7 +882,9 @@ function closeSectionModal() {
 
 // ==================== 自定义板块（笔记） ====================
 function renderCustomPage(sectionId) {
-  const container = document.getElementById('customPageContent');
+  const page = document.getElementById('page-' + sectionId);
+  if (!page) return;
+  const container = page.querySelector('#customPageContent');
   if (!container) return;
   const notes = getSectionNotes(sectionId);
 
