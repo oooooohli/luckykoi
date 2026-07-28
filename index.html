@@ -541,6 +541,8 @@ function getCheckinItems() {
       DEFAULT_CHECKIN_ITEMS.forEach(di => {
         if (!items.find(i => i.id === di.id)) { items.push({...di}); changed = true; }
       });
+      // 给旧数据补充 parentId 字段
+      items.forEach(i => { if (i.parentId === undefined) { i.parentId = null; changed = true; } });
       if (changed) saveCheckinItems(items);
       return items;
     }
