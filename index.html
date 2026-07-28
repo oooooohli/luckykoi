@@ -2583,27 +2583,17 @@ function bindEvents() {
 // 启动
 document.addEventListener('DOMContentLoaded', init);
 
-// PWA Service Worker — 自动检测更新
+// PWA Service Worker — 注销旧版本，注册新版本
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').then(reg => {
-    // 检测到新版本时自动刷新
-    reg.addEventListener('updatefound', () => {
-      const newWorker = reg.installing;
-      if (!newWorker) return;
-      newWorker.addEventListener('statechange', () => {
-        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-          // 新版本已就绪，刷新页面
-          location.reload();
-        }
-      });
-    });
-  }).catch(() => {});
-  // 每小时检查一次更新
-  setInterval(() => {
-    navigator.serviceWorker.getRegistration().then(reg => {
-      if (reg) reg.update();
-    });
-  }, 3600000);
+  // 先注销所有旧 SW
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(reg => reg.unregister());
+  }).then(() => {
+    // 等旧 SW 清理完毕后再注册新的
+    setTimeout(() => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }, 500);
+  });
 }
 </script>
 </body>
