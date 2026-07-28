@@ -892,6 +892,9 @@ function renderCheckin() {
         </div>
         <div class="flex items-center gap-1">
           ${hasChildren ? `<svg class="checkin-chevron w-4 h-4 text-gray-300 transition-transform duration-300" data-id="${item.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>` : ''}
+          <button class="add-child-quick-btn w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-teal-500 hover:bg-teal-50 transition" data-parent="${item.id}" title="添加子项">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+          </button>
           <button class="checkin-edit-btn w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 transition" data-key="${item.id}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
           </button>
@@ -966,6 +969,14 @@ function bindCheckinEvents() {
     card.addEventListener('click', (e) => {
       if (e.target.closest('.checkin-edit-btn')) return;
       toggleCheckin(card.dataset.key);
+    });
+  });
+
+  // 父级右侧快速添加子项按钮（+号）
+  cards.querySelectorAll('.add-child-quick-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      addChildItem(btn.dataset.parent);
     });
   });
 
