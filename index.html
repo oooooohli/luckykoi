@@ -541,8 +541,13 @@ function getCheckinItems() {
       DEFAULT_CHECKIN_ITEMS.forEach(di => {
         if (!items.find(i => i.id === di.id)) { items.push({...di}); changed = true; }
       });
-      // 给旧数据补充 parentId 字段
-      items.forEach(i => { if (i.parentId === undefined) { i.parentId = null; changed = true; } });
+      // 给旧数据补充 parentId 字段，并验证数据完整性
+      items.forEach(i => {
+        if (i.parentId === undefined) { i.parentId = null; changed = true; }
+        if (i.archived === undefined) { i.archived = false; changed = true; }
+        if (i.builtin === undefined) { i.builtin = false; changed = true; }
+        if (!i.color) { i.color = '#22c55e'; changed = true; }
+      });
       if (changed) saveCheckinItems(items);
       return items;
     }
@@ -640,15 +645,23 @@ let bookCoverDataUrl = null;    // 当前封面的 data URL（编辑时已有图
 
 // ==================== 初始化 ====================
 function init() {
-  updateHeaderDate();
-  // 触发数据迁移
-  getCheckinItems();
-  renderDrawer();
-  renderHome();
-  renderCheckin();
-  renderTodo();
-  bindEvents();
-  getSections();
+  try {
+    updateHeaderDate();
+    getCheckinItems(); // 触发数据迁移
+    renderDrawer();
+    renderHome();
+    renderCheckin();
+    renderTodo();
+    bindEvents();
+    getSections();
+  } catch(e) {
+    // 数据损坏时重置
+    console.error('Init error, resetting data:', e);
+    localStorage.removeItem('luckyKoi.checkinItems');
+    localStorage.removeItem('luckyKoi.checkin');
+    localStorage.removeItem('luckyKoi.archives');
+    location.reload();
+  }
 }
 
 function updateHeaderDate() {
