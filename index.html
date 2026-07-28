@@ -1281,16 +1281,20 @@ function renderMetricConfig(itemId) {
   const container = document.getElementById('metricConfigList');
   if (!container) return;
   const cfg = getItemMetricConfig(itemId);
+  if (!cfg.metrics || cfg.metrics.length === 0) {
+    container.innerHTML = '<p class="text-xs text-gray-300 text-center py-2">点击右上角「添加指标」按钮来添加要追踪的指标</p>';
+    return;
+  }
   container.innerHTML = cfg.metrics.map((m, idx) => `
     <div class="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
-      <input type="text" class="metric-label-input flex-1 bg-transparent text-sm outline-none text-gray-700" value="${escapeHtml(m.label)}" placeholder="指标名称" data-idx="${idx}">
+      <input type="text" class="metric-label-input flex-1 bg-transparent text-sm outline-none text-gray-700" value="${escapeHtml(m.label)}" placeholder="指标名称（如：体重）" data-idx="${idx}">
       <input type="text" class="metric-unit-input w-14 bg-white rounded-lg text-xs text-center py-1 outline-none border border-gray-200 text-gray-500" value="${escapeHtml(m.unit)}" placeholder="单位" data-idx="${idx}">
       <button class="metric-remove-btn w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition flex-shrink-0" data-idx="${idx}">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
       </button>
     </div>
   `).join('') + `
-    <p class="text-[10px] text-gray-300">编辑后点击"保存"生效。打卡时将提示录入这些指标。</p>
+    <p class="text-[10px] text-gray-300">编辑后点击下方"保存"生效。打卡时将提示录入这些指标。</p>
   `;
 
   // 绑定事件
@@ -1320,19 +1324,6 @@ function saveMetricConfigFromUI() {
   cfg[editingCheckinItemId] = { metrics };
   saveMetricConfig(cfg);
 }
-
-// 添加指标 —— 使用 onclick 直接绑定，确保可靠
-document.getElementById('addMetricConfigBtn').onclick = function() {
-  if (!editingCheckinItemId) {
-    alert('请先保存打卡项后再添加指标');
-    return;
-  }
-  const cfg = getMetricConfig();
-  const itemCfg = ensureMetricConfig(editingCheckinItemId);
-  itemCfg.metrics.push({ key: `metric_${Date.now()}_${itemCfg.metrics.length}`, label: '', unit: '' });
-  saveMetricConfig(cfg);
-  renderMetricConfig(editingCheckinItemId);
-};
 
 function addCheckinItem() {
   const name = prompt('请输入新打卡项名称：');
@@ -2330,6 +2321,17 @@ function bindEvents() {
   });
   document.getElementById('archiveItemBtn').addEventListener('click', openArchiveConfirm);
   document.getElementById('deleteItemBtn').addEventListener('click', deleteCheckinItem);
+  document.getElementById('addMetricConfigBtn').addEventListener('click', () => {
+    if (!editingCheckinItemId) {
+      alert('请先保存打卡项后再添加指标');
+      return;
+    }
+    const cfg = getMetricConfig();
+    const itemCfg = ensureMetricConfig(editingCheckinItemId);
+    itemCfg.metrics.push({ key: `metric_${Date.now()}_${itemCfg.metrics.length}`, label: '', unit: '' });
+    saveMetricConfig(cfg);
+    renderMetricConfig(editingCheckinItemId);
+  });
   document.getElementById('archiveNoteCancel').addEventListener('click', closeArchiveNoteModal);
   document.getElementById('archiveNoteConfirm').addEventListener('click', confirmArchive);
   document.getElementById('archiveNoteModal').addEventListener('click', (e) => {
