@@ -159,6 +159,11 @@
     </div>
   </header>
 
+  <!-- 数据状态提示条 -->
+  <div id="dataStatusBar" class="hidden sticky top-[52px] z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-700 text-center">
+    ⚠️ 数据路径不一致，请使用 <a href="/luckykoi/index.html" class="underline font-bold text-teal-600">正确链接</a> 打开
+  </div>
+
   <!-- 内容容器 -->
   <main class="px-4 pt-4" id="mainContent">
     <!-- ===== 首页概览 ===== -->
@@ -702,15 +707,10 @@ let bookCoverFile = null;       // 当前选中的封面文件
 let bookCoverDataUrl = null;    // 当前封面的 data URL（编辑时已有图片）
 
 // ==================== 初始化 ====================
-// URL 规范化：统一跳转到 /luckykoi/index.html，确保 localStorage 路径一致
-(function() {
-  const path = location.pathname;
-  if (path === '/luckykoi/' || path === '/luckykoi') {
-    location.replace('/luckykoi/index.html');
-  }
-})();
-
 function init() {
+  // 检测数据路径一致性
+  checkDataPath();
+
   try {
     updateHeaderDate();
     getCheckinItems(); // 触发数据迁移
@@ -733,6 +733,21 @@ function init() {
     } catch(e2) {
       console.error('Recovery also failed:', e2);
     }
+  }
+}
+
+// 检测数据路径：提醒用户使用正确的URL
+function checkDataPath() {
+  const path = location.pathname;
+  const correctPath = '/luckykoi/index.html';
+  const bar = document.getElementById('dataStatusBar');
+  if (!bar) return;
+
+  if (path !== correctPath) {
+    bar.classList.remove('hidden');
+    bar.innerHTML = `⚠️ 当前路径: <code>${path}</code>，数据路径: <code>${correctPath}</code><br>请使用 <a href="${correctPath}" class="underline font-bold text-teal-600">正确链接</a> 打开以恢复数据`;
+  } else {
+    bar.classList.add('hidden');
   }
 }
 
