@@ -702,6 +702,14 @@ let bookCoverFile = null;       // 当前选中的封面文件
 let bookCoverDataUrl = null;    // 当前封面的 data URL（编辑时已有图片）
 
 // ==================== 初始化 ====================
+// URL 规范化：统一跳转到 /luckykoi/index.html，确保 localStorage 路径一致
+(function() {
+  const path = location.pathname;
+  if (path === '/luckykoi/' || path === '/luckykoi') {
+    location.replace('/luckykoi/index.html');
+  }
+})();
+
 function init() {
   try {
     updateHeaderDate();
