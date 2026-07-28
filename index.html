@@ -82,6 +82,7 @@
     .modal-overlay.open { display: flex; }
     .modal-sheet { background: #fff; width: 100%; max-width: 480px; border-radius: 20px 20px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px)); animation: slideUp 0.3s ease; }
     @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .animate-slide-up { animation: slideUp 0.3s ease; }
 
     /* 图标选择器 */
     .icon-option { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 22px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; }
@@ -1013,8 +1014,8 @@ function toggleChildren(parentId) {
   }
 }
 
-function toggleCheckin(key) {
-  const date = todayStr();
+function toggleCheckin(key, dateStr) {
+  const date = dateStr || todayStr();
   const all = getCheckins();
   if (!all[date]) all[date] = {};
   all[date][key] = !all[date][key];
@@ -1354,9 +1355,10 @@ function renderMonthCalendar() {
     const record = all[s] || {};
     const dayOfWeek = new Date(yr, mo, d).getDay();
     const isWeekend = dayOfWeek===0 || dayOfWeek===6;
+    const isFuture = new Date(yr, mo, d) > new Date();
 
     const div = document.createElement('div');
-    div.className = `aspect-square rounded-lg flex flex-col items-center justify-center text-[10px] relative ${isCurrentMonth && d===today ? 'ring-2 ring-teal-400 ring-offset-1' : ''}`;
+    div.className = `aspect-square rounded-lg flex flex-col items-center justify-center text-[10px] relative cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors ${isCurrentMonth && d===today ? 'ring-2 ring-teal-400 ring-offset-1' : ''} ${isFuture ? 'opacity-40 cursor-default' : ''}`;
 
     const dateSpan = document.createElement('span');
     dateSpan.className = `font-semibold ${isWeekend?'text-gray-400':'text-gray-600'}`;
@@ -1375,11 +1377,104 @@ function renderMonthCalendar() {
 
     const done = items.filter(i => record[i.id]).length;
     div.title = `${s}: ${done}/${items.length} 项完成`;
+
+    // 点击日期打开补卡面板
+    if (!isFuture) {
+      div.addEventListener('click', () => openBackfillPanel(s));
+    }
+
     grid.appendChild(div);
   }
 
   // 更新图例
   updateMonthLegend(items);
+}
+
+function openBackfillPanel(dateStr) {
+  const all = getCheckins();
+  const record = all[dateStr] || {};
+  const items = getActiveItems();
+  const dateLabel = dateStr.replace(/-/g, '年').replace(/年(\d)$/, '年0$1').replace(/(\d)$/, '0$1') + '日';
+  // 简化格式化
+  const parts = dateStr.split('-');
+  const displayDate = `${parts[0]}年${parseInt(parts[1])}月${parseInt(parts[2])}日`;
+
+  // 移除已有补卡面板
+  const existing = document.getElementById('backfillOverlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'backfillOverlay';
+  overlay.className = 'fixed inset-0 bg-black/40 z-50 flex items-end justify-center';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.innerHTML = `
+    <div class="bg-white rounded-t-3xl w-full max-w-lg p-5 animate-slide-up" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-lg font-bold text-gray-800">📅 ${displayDate}</h3>
+          <p class="text-xs text-gray-400 mt-0.5">点击切换打卡状态</p>
+        </div>
+        <button class="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition" onclick="document.getElementById('backfillOverlay').remove()">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="space-y-2 max-h-80 overflow-y-auto">
+        ${items.map(item => {
+          const checked = !!record[item.id];
+          return `
+            <div class="backfill-item flex items-center justify-between p-3 rounded-xl cursor-pointer transition border-2 ${checked ? 'border-teal-300 bg-teal-50' : 'border-gray-100 bg-gray-50'}" data-date="${dateStr}" data-key="${item.id}">
+              <div class="flex items-center gap-3">
+                <span class="text-2xl">${item.icon}</span>
+                <div>
+                  <div class="font-semibold text-gray-700 text-sm">${escapeHtml(item.title)}</div>
+                  <div class="text-[10px] text-gray-400">${checked ? '✅ 已完成' : '⭕ 未打卡'}</div>
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-full flex items-center justify-center transition ${checked ? '' : 'bg-gray-200'}" style="background:${checked ? item.color : ''}">
+                ${checked ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <button class="w-full mt-4 py-3 rounded-xl bg-gray-100 text-gray-500 text-sm font-medium hover:bg-gray-200 transition" onclick="document.getElementById('backfillOverlay').remove()">关闭</button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // 绑定点击事件
+  overlay.querySelectorAll('.backfill-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const date = el.dataset.date;
+      const key = el.dataset.key;
+      const cur = getCheckins();
+      if (!cur[date]) cur[date] = {};
+      cur[date][key] = !cur[date][key];
+      saveCheckins(cur);
+      // 刷新面板内容
+      openBackfillPanel(date);
+      // 刷新底层的月视图和打卡卡片
+      renderCheckin();
+      renderSummary();
+      if (currentPage === 'home') renderHome();
+    });
+  });
+
+  // 动画
+  requestAnimationFrame(() => {
+    const sheet = overlay.querySelector('.animate-slide-up');
+    if (sheet) {
+      sheet.style.transform = 'translateY(100%)';
+      sheet.style.transition = 'transform 0.3s ease-out';
+      requestAnimationFrame(() => {
+        sheet.style.transform = 'translateY(0)';
+      });
+    }
+  });
 }
 
 function updateMonthLegend(items) {
