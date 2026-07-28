@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>幸运鲤的工作台</title>
+
+  <!-- PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="幸运鲤工作台">
+  <meta name="theme-color" content="#14b8a6">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            koi: { 50:'#ecfeff', 100:'#cffafe', 200:'#a5f3fc', 300:'#67e8f9', 400:'#22d3ee', 500:'#06b6d4', 600:'#0891b2', 700:'#0e7490', 800:'#155e75', 900:'#164e63' },
+            tealM: { 50:'#f0fdfa', 100:'#ccfbf1', 200:'#99f6e4', 300:'#5eead4', 400:'#2dd4bf', 500:'#14b8a6', 600:'#0d9488', 700:'#0f766e', 800:'#115e59', 900:'#134e4a' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0fdfa; overflow-x: hidden; margin: 0; }
+    .app-shell { max-width: 480px; margin: 0 auto; min-height: 100dvh; position: relative; background: #f0fdfa; overflow: hidden; }
+
+    /* 抽屉覆盖层 */
+    .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 40; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+    .drawer-overlay.open { opacity: 1; pointer-events: auto; }
+
+    /* 左侧抽屉 */
+    .drawer { position: fixed; top: 0; left: 0; bottom: 0; width: 260px; z-index: 50; background: #fff; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1); display: flex; flex-direction: column; box-shadow: 4px 0 24px rgba(0,0,0,0.12); }
+    .drawer.open { transform: translateX(0); }
+
+    /* 安全区域 */
+    .safe-bottom { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px); }
+
+    /* 打卡卡片 */
+    .checkin-card { transition: all 0.25s cubic-bezier(0.4,0,0.2,1); cursor: pointer; user-select: none; }
+    .checkin-card.checked { background: linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%); border-color: #14b8a6 !important; transform: scale(0.97); }
+    .checkin-card .check-mark { transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+    .checkin-card.checked .check-mark { transform: scale(1); opacity: 1; }
+    .checkin-card:not(.checked) .check-mark { transform: scale(0); opacity: 0; }
+
+    /* 进度条 */
+    .progress-bar { transition: width 0.5s cubic-bezier(0.4,0,0.2,1); }
+
+    /* Todo */
+    .todo-item.done .todo-text { text-decoration: line-through; color: #9ca3af; transition: all 0.3s; }
+    .todo-circle { transition: all 0.25s; }
+    .todo-item.done .todo-circle { background: #14b8a6; border-color: #14b8a6; }
+
+    /* 页面切换 */
+    .page-content { display: none; animation: fadeIn 0.28s ease; }
+    .page-content.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* 子 Tab */
+    .sub-tab { transition: all 0.2s; }
+    .sub-tab.active { background: linear-gradient(135deg, #14b8a6, #0d9488); color: #fff; }
+
+    /* 抽屉列表项 */
+    .drawer-item { transition: all 0.15s; cursor: pointer; }
+    .drawer-item:active { background: #f0fdfa; }
+    .drawer-item.active { background: #f0fdfa; border-left: 3px solid #14b8a6; }
+
+    /* 涟漪 */
+    .ripple { position: relative; overflow: hidden; }
+    .ripple::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,255,255,0.4) 10%, transparent 10%); background-position: center; background-repeat: no-repeat; opacity: 0; transition: opacity 0.6s, transform 0.6s; }
+    .ripple:active::after { opacity: 1; transform: scale(0); transition: 0s; }
+
+    /* 模态 */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 60; display: none; align-items: flex-end; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal-sheet { background: #fff; width: 100%; max-width: 480px; border-radius: 20px 20px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px)); animation: slideUp 0.3s ease; }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+    /* 图标选择器 */
+    .icon-option { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 22px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; }
+    .icon-option.selected { border-color: #14b8a6; background: #f0fdfa; }
+    .icon-option:active { background: #f0fdfa; }
+
+    /* 星级评分 */
+    .star-btn { font-size: 28px; cursor: pointer; transition: transform 0.15s; color: #d1d5db; }
+    .star-btn.active { color: #f59e0b; }
+    .star-btn:active { transform: scale(1.25); }
+
+    /* 封面图片 */
+    .cover-upload { cursor: pointer; border: 2px dashed #d1d5db; border-radius: 12px; transition: all 0.2s; }
+    .cover-upload:hover { border-color: #14b8a6; background: #f0fdfa; }
+    .cover-upload.has-image { border-style: solid; border-color: #14b8a6; padding: 0; }
+
+    /* 阅读指数滑块 */
+    .index-slider { -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px; background: linear-gradient(to right, #d1d5db, #14b8a6); outline: none; }
+    .index-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #14b8a6; cursor: pointer; box-shadow: 0 2px 6px rgba(20,184,166,0.3); }
+
+    /* 书籍卡片 */
+    .book-card { transition: all 0.2s; }
+    .book-card:active { transform: scale(0.98); }
+
+    /* 展开折叠 */
+    .book-expand { max-height: 0; overflow: hidden; transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.3s, padding 0.3s; opacity: 0; padding-top: 0; padding-bottom: 0; }
+    .book-expand.open { max-height: 500px; opacity: 1; padding-top: 0.5rem; padding-bottom: 0.75rem; }
+
+    /* 子模块标题 */
+    .sub-module-header { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; font-weight: 700; color: #374151; margin-bottom: 0.5rem; }
+    .sub-module-header::after { content: ''; flex: 1; height: 1px; background: #e5e7eb; }
+  </style>
+</head>
+<body>
+<div class="app-shell safe-bottom" id="app">
+
+  <!-- ========== 抽屉覆盖层 ========== -->
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+
+  <!-- ========== 左侧抽屉 ========== -->
+  <aside class="drawer" id="drawer">
+    <div class="bg-gradient-to-r from-teal-500 to-cyan-600 text-white px-5 py-4">
+      <div class="flex items-center gap-2.5">
+        <span class="text-2xl">🌳</span>
+        <div>
+          <div class="font-bold text-base">幸运鲤的工作台</div>
+          <div class="text-xs opacity-75">事项清单</div>
+        </div>
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto py-2" id="drawerList">
+      <!-- 动态渲染 -->
+    </div>
+    <div class="px-4 py-3 border-t border-gray-100">
+      <button id="addSectionBtn" class="w-full py-2.5 rounded-xl border-2 border-dashed border-teal-300 text-teal-600 font-semibold text-sm flex items-center justify-center gap-1.5 hover:bg-teal-50 transition active:scale-95">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+        添加事项
+      </button>
+    </div>
+  </aside>
+
+  <!-- ========== 主内容区 ========== -->
+  <!-- HEADER -->
+  <header class="sticky top-0 z-30 bg-gradient-to-r from-teal-500 to-cyan-600 text-white shadow-lg">
+    <div class="flex items-center justify-between px-5 py-3">
+      <div class="flex items-center gap-2">
+        <button id="menuBtn" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/20 transition active:scale-90">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <span class="text-xl">🌳</span>
+        <h1 class="text-base font-bold tracking-wide" id="pageTitle">幸运鲤的工作台</h1>
+      </div>
+      <span class="text-xs opacity-85" id="headerDate"></span>
+    </div>
+  </header>
+
+  <!-- 内容容器 -->
+  <main class="px-4 pt-4" id="mainContent">
+    <!-- ===== 首页概览 ===== -->
+    <div class="page-content active" id="page-home">
+      <!-- 今日概览卡片 -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+        <h2 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><span>📋</span> 今日概览</h2>
+        <div class="grid grid-cols-2 gap-3" id="homeOverview">
+          <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-3 text-center">
+            <div class="text-3xl mb-1">🏃</div>
+            <div class="text-xs text-gray-500">今日打卡</div>
+            <div class="text-xl font-bold text-teal-600" id="homeCheckin">0/3</div>
+          </div>
+          <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-3 text-center">
+            <div class="text-3xl mb-1">📝</div>
+            <div class="text-xs text-gray-500">待办事项</div>
+            <div class="text-xl font-bold text-teal-600" id="homeTodo">0</div>
+          </div>
+          <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-3 text-center">
+            <div class="text-3xl mb-1">📚</div>
+            <div class="text-xs text-gray-500">已读书籍</div>
+            <div class="text-xl font-bold text-teal-600" id="homeBooks">0</div>
+          </div>
+          <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-3 text-center">
+            <div class="text-3xl mb-1">⭐</div>
+            <div class="text-xs text-gray-500">平均评分</div>
+            <div class="text-xl font-bold text-teal-600" id="homeAvgRating">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快捷入口 -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+        <h2 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><span>⚡</span> 快捷入口</h2>
+        <div class="grid grid-cols-3 gap-2" id="quickLinks">
+          <button class="quick-link bg-gradient-to-r from-teal-50 to-cyan-50 rounded-xl p-3 flex flex-col items-center gap-1 text-xs font-semibold text-teal-700 hover:shadow-md transition active:scale-95" data-page="checkin">
+            <span class="text-lg">📋</span> 每日打卡
+          </button>
+          <button class="quick-link bg-gradient-to-r from-teal-50 to-cyan-50 rounded-xl p-3 flex flex-col items-center gap-1 text-xs font-semibold text-teal-700 hover:shadow-md transition active:scale-95" data-page="todo">
+            <span class="text-lg">✅</span> To-do
+          </button>
+          <button class="quick-link bg-gradient-to-r from-teal-50 to-cyan-50 rounded-xl p-3 flex flex-col items-center gap-1 text-xs font-semibold text-teal-700 hover:shadow-md transition active:scale-95" data-page="books">
+            <span class="text-lg">📚</span> 阅读记录
+          </button>
+        </div>
+      </div>
+
+      <!-- 今日名言 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-4 text-center">
+        <p class="text-gray-400 text-xs" id="dailyQuote">🌱 种一棵树最好的时间是十年前，其次是现在。</p>
+      </div>
+    </div>
+
+    <!-- ===== 每日打卡 ===== -->
+    <div class="page-content" id="page-checkin">
+      <!-- 进度条 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-semibold text-gray-700">今日完成进度</span>
+          <span class="text-sm font-bold text-teal-600" id="progressText">0/3</span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+          <div class="progress-bar bg-gradient-to-r from-teal-400 to-cyan-500 h-full rounded-full" id="progressBar" style="width:0%"></div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1 text-center" id="progressHint">新的一天，从打卡开始！</p>
+      </div>
+
+      <!-- 打卡卡片（动态渲染） -->
+      <div class="grid gap-3 mb-4" id="checkinCards"></div>
+
+      <!-- 添加打卡项 -->
+      <button id="addCheckinItemBtn" class="w-full py-3 mb-5 rounded-xl border-2 border-dashed border-teal-300 text-teal-600 font-semibold text-sm flex items-center justify-center gap-1.5 hover:bg-teal-50 transition active:scale-95">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+        添加打卡项
+      </button>
+
+      <!-- 归档区域 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-5">
+        <div class="flex items-center justify-between cursor-pointer select-none" id="archiveToggle">
+          <h3 class="text-sm font-bold text-gray-700 flex items-center gap-1.5"><span>📦</span> 已归档 <span class="text-xs text-gray-400" id="archiveCount">(0)</span></h3>
+          <svg class="w-4 h-4 text-gray-300 transition-transform duration-300" id="archiveChevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+        <div class="archive-expand" id="archiveContent" style="max-height:0;overflow:hidden;transition:max-height 0.35s ease,opacity 0.3s;opacity:0;"></div>
+      </div>
+
+      <!-- 汇总 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-5">
+        <h3 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><span>📊</span> 打卡汇总</h3>
+        <div class="flex gap-2 mb-4">
+          <button class="sub-tab active flex-1 py-2 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600" data-period="week">本周</button>
+          <button class="sub-tab flex-1 py-2 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600" data-period="month">本月</button>
+          <button class="sub-tab flex-1 py-2 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600" data-period="year">本年</button>
+        </div>
+        <div class="flex items-center justify-center gap-2 mb-3 py-2 bg-teal-50 rounded-xl">
+          <span class="text-xl">🔥</span>
+          <span class="text-sm text-teal-700">连续打卡 <b class="text-lg" id="streakCount">0</b> 天</span>
+        </div>
+
+        <!-- 周视图：柱状图 -->
+        <div id="summaryWeekView">
+          <div class="relative" style="height:200px"><canvas id="weekChart"></canvas></div>
+        </div>
+
+        <!-- 月视图：日历 -->
+        <div id="summaryMonthView" style="display:none">
+          <div class="text-xs text-gray-500 mb-2 text-center" id="monthLabel">2026年7月</div>
+          <div class="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-400 mb-1">
+            <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+          </div>
+          <div class="grid grid-cols-7 gap-1" id="monthCalendar"></div>
+        </div>
+
+        <!-- 年视图：柱状图 -->
+        <div id="summaryYearView" style="display:none">
+          <div class="relative" style="height:220px"><canvas id="yearChart"></canvas></div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 mt-3" id="statsGrid"></div>
+      </div>
+    </div>
+
+    <!-- ===== To-do List ===== -->
+    <div class="page-content" id="page-todo">
+      <div class="flex items-center justify-between mb-3">
+        <button class="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-500 hover:bg-teal-50 transition" id="todoPrevDay"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
+        <span class="font-semibold text-gray-700 text-sm" id="todoDateLabel">今天</span>
+        <button class="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-500 hover:bg-teal-50 transition" id="todoNextDay"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+      <div class="flex gap-2 mb-4">
+        <input type="text" id="todoInput" placeholder="添加今天要做的事…" maxlength="80" class="flex-1 px-4 py-3 rounded-2xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition shadow-sm">
+        <button id="todoAddBtn" class="px-5 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white rounded-2xl font-semibold text-sm shadow-md hover:shadow-lg active:scale-95 transition ripple">添加</button>
+      </div>
+      <div class="space-y-2" id="todoList"></div>
+      <div class="text-center py-12" id="todoEmpty"><div class="text-5xl mb-3">📝</div><p class="text-gray-400 text-sm">今天还没有待办事项</p><p class="text-gray-300 text-xs mt-1">添加一条开始吧</p></div>
+    </div>
+
+    <!-- ===== 阅读记录 ===== -->
+    <div class="page-content" id="page-books">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-bold text-gray-700 flex items-center gap-1.5"><span>📚</span> 我的书架</h2>
+        <button id="addBookBtn" class="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white rounded-xl font-semibold text-xs shadow-sm active:scale-95 transition flex items-center gap-1 ripple">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+          添加书籍
+        </button>
+      </div>
+      <div class="space-y-3" id="bookList"></div>
+      <div class="text-center py-12" id="bookEmpty">
+        <div class="text-5xl mb-3">📚</div>
+        <p class="text-gray-400 text-sm">还没有添加任何书籍</p>
+        <p class="text-gray-300 text-xs mt-1">记录你的阅读之旅吧</p>
+      </div>
+    </div>
+
+    <!-- ===== 自定义板块容器 ===== -->
+    <div class="page-content" id="page-custom-template" style="display:none !important"></div>
+  </main>
+
+  <!-- ========== 底部栏：回到首页 ========== -->
+  <nav class="fixed bottom-0 left-0 right-0 z-30" style="max-width:480px; margin:0 auto;">
+    <div class="bg-white/90 backdrop-blur-lg border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] flex items-center justify-center" style="padding-bottom:env(safe-area-inset-bottom,0px)">
+      <button id="homeBtn" class="flex items-center gap-1.5 py-3 text-teal-600 font-semibold text-sm active:scale-95 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        回到首页
+      </button>
+    </div>
+  </nav>
+
+  <!-- ========== 添加/编辑事项弹窗 ========== -->
+  <div class="modal-overlay" id="sectionModal">
+    <div class="modal-sheet">
+      <h3 class="text-base font-bold text-gray-800 mb-1" id="modalTitle">添加事项</h3>
+      <p class="text-xs text-gray-400 mb-4">选择一个图标并输入名称</p>
+      <!-- 图标选择 -->
+      <div class="mb-3">
+        <div class="text-xs text-gray-500 mb-2">选择图标</div>
+        <div class="flex flex-wrap gap-2" id="iconPicker">
+          <!-- 动态生成 -->
+        </div>
+      </div>
+      <!-- 名称输入 -->
+      <div class="mb-4">
+        <input type="text" id="sectionNameInput" placeholder="事项名称" maxlength="20" class="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition">
+      </div>
+      <!-- 按钮 -->
+      <div class="flex gap-2">
+        <button id="modalCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
+        <button id="modalConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 书籍编辑弹窗 ========== -->
+  <div class="modal-overlay" id="bookModal">
+    <div class="modal-sheet" style="max-height:90vh; overflow-y:auto;">
+      <h3 class="text-base font-bold text-gray-800 mb-1" id="bookModalTitle">添加书籍</h3>
+      <p class="text-xs text-gray-400 mb-4">记录你的阅读足迹</p>
+
+      <!-- 子模块1: 书籍信息 -->
+      <div class="bg-gray-50 rounded-xl p-3 mb-4">
+        <div class="sub-module-header mb-3"><span>📖</span> 书籍信息</div>
+        <!-- 封面照片 -->
+        <div class="mb-3">
+          <div class="text-xs text-gray-500 mb-2">封面照片</div>
+          <div class="cover-upload flex flex-col items-center justify-center py-4 rounded-xl" id="coverUpload">
+            <input type="file" id="coverFileInput" accept="image/*" capture="environment" class="hidden">
+            <img id="coverPreview" class="hidden w-full h-36 object-cover rounded-xl" alt="封面预览">
+            <div id="coverPlaceholder" class="flex flex-col items-center">
+              <svg class="w-8 h-8 text-gray-300 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              <span class="text-xs text-gray-400">点击上传封面</span>
+            </div>
+          </div>
+          <button id="removeCoverBtn" class="hidden mt-1 text-xs text-red-400 hover:text-red-500">移除封面</button>
+        </div>
+        <!-- 书名 -->
+        <div class="mb-3">
+          <div class="text-xs text-gray-500 mb-1.5">书名 <span class="text-red-400">*</span></div>
+          <input type="text" id="bookTitleInput" placeholder="输入书名" maxlength="50" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition">
+        </div>
+        <!-- 作者 -->
+        <div class="mb-1">
+          <div class="text-xs text-gray-500 mb-1.5">作者</div>
+          <input type="text" id="bookAuthorInput" placeholder="输入作者" maxlength="30" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition">
+        </div>
+      </div>
+
+      <!-- 子模块2: 阅读评分 -->
+      <div class="bg-gray-50 rounded-xl p-3 mb-4">
+        <div class="sub-module-header mb-3"><span>⭐</span> 阅读评分</div>
+        <!-- 阅读指数 -->
+        <div class="mb-3">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs text-gray-500">阅读指数</span>
+            <span class="text-sm font-bold text-teal-600" id="indexValue">50</span>
+          </div>
+          <input type="range" id="bookIndexSlider" min="0" max="100" value="50" class="index-slider">
+        </div>
+        <!-- 星级评分 -->
+        <div class="mb-1">
+          <div class="text-xs text-gray-500 mb-1.5">星级评分</div>
+          <div class="flex gap-1" id="starRating">
+            <span class="star-btn" data-star="1">★</span>
+            <span class="star-btn" data-star="2">★</span>
+            <span class="star-btn" data-star="3">★</span>
+            <span class="star-btn" data-star="4">★</span>
+            <span class="star-btn" data-star="5">★</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子模块3: 读书心得 -->
+      <div class="bg-gray-50 rounded-xl p-3 mb-4">
+        <div class="sub-module-header mb-3"><span>✍️</span> 读书心得</div>
+        <textarea id="bookNotesInput" placeholder="写下你的读书心得…" maxlength="1000" rows="3" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition resize-none"></textarea>
+      </div>
+
+      <!-- 按钮 -->
+      <div class="flex gap-2">
+        <button id="bookModalCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
+        <button id="bookModalConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 打卡项编辑弹窗 ========== -->
+  <div class="modal-overlay" id="checkinItemModal">
+    <div class="modal-sheet">
+      <h3 class="text-base font-bold text-gray-800 mb-1" id="checkinItemModalTitle">编辑打卡项</h3>
+      <p class="text-xs text-gray-400 mb-4">修改名称、图标和颜色</p>
+      <!-- 图标选择 -->
+      <div class="mb-3">
+        <div class="text-xs text-gray-500 mb-2">选择图标</div>
+        <div class="flex flex-wrap gap-2" id="checkinIconPicker"></div>
+      </div>
+      <!-- 名称 -->
+      <div class="mb-3">
+        <div class="text-xs text-gray-500 mb-1.5">名称</div>
+        <input type="text" id="checkinItemNameInput" placeholder="打卡项名称" maxlength="15" class="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition">
+      </div>
+      <!-- 颜色 -->
+      <div class="mb-4">
+        <div class="text-xs text-gray-500 mb-2">颜色</div>
+        <div class="flex flex-wrap gap-2" id="colorPicker"></div>
+      </div>
+      <!-- 按钮 -->
+      <div class="flex gap-2 mb-2">
+        <button id="checkinItemCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
+        <button id="checkinItemConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">保存</button>
+      </div>
+      <button id="archiveItemBtn" class="w-full py-3 rounded-xl border border-orange-200 text-orange-500 font-semibold text-sm hover:bg-orange-50 transition active:scale-95">📦 归档此打卡项</button>
+    </div>
+  </div>
+
+  <!-- ========== 归档备注弹窗 ========== -->
+  <div class="modal-overlay" id="archiveNoteModal">
+    <div class="modal-sheet">
+      <h3 class="text-base font-bold text-gray-800 mb-1">归档打卡项</h3>
+      <p class="text-xs text-gray-400 mb-3">这个打卡任务完成了，写点心得吧</p>
+      <div class="mb-3">
+        <div class="text-xs text-gray-500 mb-1.5">完成备注</div>
+        <textarea id="archiveNoteInput" placeholder="记录你的变化和心得…（可选）" maxlength="500" rows="3" class="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition resize-none"></textarea>
+      </div>
+      <div class="flex gap-2">
+        <button id="archiveNoteCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
+        <button id="archiveNoteConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-orange-400 to-orange-500 text-white font-semibold text-sm active:scale-95 transition">确认归档</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ==================== 数据层 ====================
+const STORAGE_CHECKIN = 'luckyKoi.checkin';
+const STORAGE_TODOS   = 'luckyKoi.todos';
+const STORAGE_SECTIONS= 'luckyKoi.sections';
+const STORAGE_BOOKS   = 'luckyKoi.books';
+const STORAGE_ITEMS   = 'luckyKoi.checkinItems';
+const STORAGE_ARCHIVES= 'luckyKoi.archives';
+const IDB_NAME = 'luckyKoiDB';
+const IDB_STORE = 'images';
+
+const DEFAULT_CHECKIN_ITEMS = [
+  { id:'item_sport', title:'运动', icon:'🏃', color:'#22c55e', builtin:true, archived:false },
+  { id:'item_sleep', title:'早睡', icon:'🌙', color:'#6366f1', builtin:true, archived:false },
+  { id:'item_supplement', title:'吃补剂', icon:'💊', color:'#f97316', builtin:true, archived:false },
+];
+
+const COLOR_OPTIONS = ['#22c55e','#6366f1','#f97316','#a855f7','#ec4899','#14b8a6','#eab308','#ef4444','#3b82f6','#84cc16'];
+
+const DEFAULT_SECTIONS = [
+  { id:'checkin', title:'每日打卡', icon:'📋', builtin:true },
+  { id:'todo',    title:'To-do List', icon:'✅', builtin:true },
+  { id:'books',   title:'阅读记录', icon:'📚', builtin:true },
+];
+
+const ICON_POOL = ['📋','✅','📖','✏️','💼','🏠','🎯','💡','⭐','🔥','❤️','🎵','📷','🌍','🍎','🛒','✈️','🎮','📅','💰','🧘','📚','🎨','🔧'];
+
+function todayStr() { return new Date().toISOString().slice(0,10); }
+function fmtDate(d) { return d.toISOString().slice(0,10); }
+function parseDate(s) { const [y,m,d]=s.split('-'); return new Date(+y,+m-1,+d); }
+
+function getCheckins() { try { return JSON.parse(localStorage.getItem(STORAGE_CHECKIN)||'{}'); } catch(e) { return {}; } }
+function getCheckinsRaw() { try { return JSON.parse(localStorage.getItem(STORAGE_CHECKIN)||'{}'); } catch(e) { return {}; } }
+function saveCheckins(d) { localStorage.setItem(STORAGE_CHECKIN, JSON.stringify(d)); }
+
+function getTodos() { try { return JSON.parse(localStorage.getItem(STORAGE_TODOS)||'[]'); } catch(e) { return []; } }
+function saveTodos(d) { localStorage.setItem(STORAGE_TODOS, JSON.stringify(d)); }
+
+function getSections() {
+  try {
+    const raw = localStorage.getItem(STORAGE_SECTIONS);
+    if (raw) {
+      const sections = JSON.parse(raw);
+      // 数据迁移：确保默认预置项都存在
+      let changed = false;
+      DEFAULT_SECTIONS.forEach(ds => {
+        if (!sections.find(s => s.id === ds.id)) {
+          sections.push({...ds});
+          changed = true;
+        }
+      });
+      if (changed) saveSections(sections);
+      return sections;
+    }
+  } catch(e) {}
+  // 首次初始化
+  saveSections([...DEFAULT_SECTIONS]);
+  return [...DEFAULT_SECTIONS];
+}
+function saveSections(d) { localStorage.setItem(STORAGE_SECTIONS, JSON.stringify(d)); }
+
+// 打卡项数据（含迁移逻辑）
+function getCheckinItems() {
+  try {
+    const raw = localStorage.getItem(STORAGE_ITEMS);
+    if (raw) {
+      const items = JSON.parse(raw);
+      // 确保默认项存在
+      let changed = false;
+      DEFAULT_CHECKIN_ITEMS.forEach(di => {
+        if (!items.find(i => i.id === di.id)) { items.push({...di}); changed = true; }
+      });
+      if (changed) saveCheckinItems(items);
+      return items;
+    }
+  } catch(e) {}
+  // 迁移旧数据
+  const oldCheckins = getCheckinsRaw();
+  const migrated = [...DEFAULT_CHECKIN_ITEMS];
+  // 把旧格式数据转为新格式
+  if (Object.keys(oldCheckins).length > 0) {
+    const newCheckins = {};
+    for (const [date, record] of Object.entries(oldCheckins)) {
+      newCheckins[date] = {};
+      if (record.sport !== undefined) newCheckins[date]['item_sport'] = record.sport;
+      if (record.sleep !== undefined) newCheckins[date]['item_sleep'] = record.sleep;
+      if (record.supplement !== undefined) newCheckins[date]['item_supplement'] = record.supplement;
+      // 保留其他自定义 key
+      for (const k of Object.keys(record)) {
+        if (k!=='sport' && k!=='sleep' && k!=='supplement') newCheckins[date][k] = record[k];
+      }
+    }
+    saveCheckins(newCheckins);
+  }
+  saveCheckinItems(migrated);
+  return migrated;
+}
+function saveCheckinItems(d) { localStorage.setItem(STORAGE_ITEMS, JSON.stringify(d)); }
+
+function getActiveItems() { return getCheckinItems().filter(i => !i.archived); }
+function getArchivedItems() { return getCheckinItems().filter(i => i.archived); }
+
+function getArchives() { try { return JSON.parse(localStorage.getItem(STORAGE_ARCHIVES)||'[]'); } catch(e) { return []; } }
+function saveArchives(d) { localStorage.setItem(STORAGE_ARCHIVES, JSON.stringify(d)); }
+
+function escapeHtml(str) {
+  const div = document.createElement('div'); div.textContent = str; return div.innerHTML;
+}
+
+// ==================== IndexedDB 图片存储 ====================
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveImage(id, blob) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(blob, id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadImage(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function deleteImage(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ==================== 书籍数据 ====================
+function getBooks() { try { return JSON.parse(localStorage.getItem(STORAGE_BOOKS)||'[]'); } catch(e) { return []; } }
+function saveBooks(d) { localStorage.setItem(STORAGE_BOOKS, JSON.stringify(d)); }
+
+// ==================== 全局状态 ====================
+let currentPage = 'home';       // 当前页面
+let summaryPeriod = 'week';     // 汇总周期
+let todoViewDate = todayStr();  // Todo 日期
+let weekChart = null;           // 周图表
+let yearChart = null;           // 年图表
+let editingSectionId = null;    // 正在编辑的事项 ID
+let editingBookId = null;       // 正在编辑的书籍 ID
+let bookRating = 0;             // 当前评分
+let bookCoverFile = null;       // 当前选中的封面文件
+let bookCoverDataUrl = null;    // 当前封面的 data URL（编辑时已有图片）
+
+// ==================== 初始化 ====================
+function init() {
+  updateHeaderDate();
+  // 触发数据迁移
+  getCheckinItems();
+  renderDrawer();
+  renderHome();
+  renderCheckin();
+  renderTodo();
+  bindEvents();
+  getSections();
+}
+
+function updateHeaderDate() {
+  const now = new Date();
+  const weekdays = ['日','一','二','三','四','五','六'];
+  document.getElementById('headerDate').textContent =
+    `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} 周${weekdays[now.getDay()]}`;
+}
+
+// ==================== 导航 ====================
+function navigateTo(pageId, title) {
+  // 关闭抽屉
+  closeDrawer();
+  // 切换页面
+  currentPage = pageId;
+  document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + pageId);
+  if (target) target.classList.add('active');
+  document.getElementById('pageTitle').textContent = title || '幸运鲤的工作台';
+
+  // 如果是打卡或 Todo 或阅读，刷新数据
+  if (pageId === 'checkin') renderCheckin();
+  if (pageId === 'todo') renderTodo();
+  if (pageId === 'books') renderBooks();
+  if (pageId === 'home') renderHome();
+
+  // 更新抽屉高亮
+  renderDrawer();
+}
+
+// ==================== 抽屉 ====================
+function openDrawer() {
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+}
+
+function renderDrawer() {
+  const sections = getSections();
+  const list = document.getElementById('drawerList');
+  list.innerHTML = sections.map(s => `
+    <div class="drawer-item ${s.id===currentPage?'active':''} flex items-center gap-3 px-5 py-3" data-id="${s.id}">
+      <span class="text-xl">${s.icon}</span>
+      <span class="flex-1 text-sm font-medium text-gray-700">${escapeHtml(s.title)}</span>
+      <button class="drawer-edit-btn w-6 h-6 flex items-center justify-center rounded text-gray-300 hover:text-teal-500 transition" data-id="${s.id}" data-action="edit">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      </button>
+      ${!s.builtin ? `
+      <button class="drawer-delete-btn w-6 h-6 flex items-center justify-center rounded text-gray-300 hover:text-red-400 transition" data-id="${s.id}" data-action="delete">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      </button>` : ''}
+    </div>
+  `).join('');
+
+  // 绑定事件
+  list.querySelectorAll('.drawer-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      // 不拦截编辑/删除按钮
+      if (e.target.closest('.drawer-edit-btn') || e.target.closest('.drawer-delete-btn')) return;
+      const id = item.dataset.id;
+      const sec = sections.find(s => s.id === id);
+      if (sec) navigateTo(id, sec.title);
+    });
+  });
+  list.querySelectorAll('.drawer-edit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSectionModal(btn.dataset.id);
+    });
+  });
+  list.querySelectorAll('.drawer-delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSection(btn.dataset.id);
+    });
+  });
+}
+
+// ==================== 事项 CRUD ====================
+function openSectionModal(id) {
+  const sections = getSections();
+  editingSectionId = id || null;
+  const sec = id ? sections.find(s => s.id === id) : null;
+  document.getElementById('modalTitle').textContent = sec ? '编辑事项' : '添加事项';
+  document.getElementById('sectionNameInput').value = sec ? sec.title : '';
+  // 渲染图标选择器
+  const picker = document.getElementById('iconPicker');
+  const selectedIcon = sec ? sec.icon : '📖';
+  picker.innerHTML = ICON_POOL.map(ic => `
+    <div class="icon-option ${ic===selectedIcon?'selected':''}" data-icon="${ic}">${ic}</div>
+  `).join('');
+  picker.querySelectorAll('.icon-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      picker.querySelectorAll('.icon-option').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+    });
+  });
+  document.getElementById('sectionModal').classList.add('open');
+}
+
+function confirmSection() {
+  const name = document.getElementById('sectionNameInput').value.trim();
+  if (!name) { alert('请输入事项名称'); return; }
+  const icon = document.querySelector('#iconPicker .icon-option.selected')?.dataset.icon || '📖';
+  const sections = getSections();
+
+  if (editingSectionId) {
+    // 编辑
+    const idx = sections.findIndex(s => s.id === editingSectionId);
+    if (idx !== -1) { sections[idx].title = name; sections[idx].icon = icon; }
+  } else {
+    // 添加
+    sections.push({ id: 'custom_' + Date.now(), title: name, icon, builtin: false });
+  }
+  saveSections(sections);
+  closeSectionModal();
+  renderDrawer();
+}
+
+function deleteSection(id) {
+  if (!confirm('确定删除这个事项吗？')) return;
+  const sections = getSections();
+  const sec = sections.find(s => s.id === id);
+  if (!sec || sec.builtin) return;
+  saveSections(sections.filter(s => s.id !== id));
+  if (currentPage === id) navigateTo('home', '幸运鲤的工作台');
+  renderDrawer();
+}
+
+function closeSectionModal() {
+  document.getElementById('sectionModal').classList.remove('open');
+  editingSectionId = null;
+  document.getElementById('sectionNameInput').value = '';
+}
+
+// ==================== 首页概览 ====================
+function renderHome() {
+  const all = getCheckins();
+  const items = getActiveItems();
+  const today = all[todayStr()] || {};
+  const doneCount = items.filter(i => today[i.id]).length;
+  document.getElementById('homeCheckin').textContent = `${doneCount}/${items.length}`;
+
+  const todos = getTodos();
+  const todayTodos = todos.filter(t => t.date === todayStr());
+  const pendingCount = todayTodos.filter(t => !t.done).length;
+  document.getElementById('homeTodo').textContent = pendingCount;
+
+  // 阅读统计
+  const books = getBooks();
+  document.getElementById('homeBooks').textContent = books.length;
+  if (books.length > 0) {
+    const avgRating = (books.reduce((sum, b) => sum + (b.rating||0), 0) / books.length).toFixed(1);
+    document.getElementById('homeAvgRating').textContent = avgRating;
+  } else {
+    document.getElementById('homeAvgRating').textContent = '--';
+  }
+
+  // 名言
+  const quotes = [
+    '🌱 种一棵树最好的时间是十年前，其次是现在。',
+    '💪 每天进步一点点，坚持带来大改变。',
+    '🌿 不积跬步，无以至千里。',
+    '✨ 自律即自由。',
+    '🎯 完成比完美更重要。',
+    '🌳 你今天做的每一件小事，都在塑造未来的你。',
+  ];
+  const todayIdx = new Date().getDate() % quotes.length;
+  document.getElementById('dailyQuote').textContent = quotes[todayIdx];
+}
+
+// ==================== 每日打卡 ====================
+function renderCheckin() {
+  const date = todayStr();
+  const all = getCheckins();
+  const items = getActiveItems();
+  const today = all[date] || {};
+  const doneCount = items.filter(i => today[i.id]).length;
+  const total = items.length;
+
+  document.getElementById('progressText').textContent = `${doneCount}/${total}`;
+  document.getElementById('progressBar').style.width = total ? `${(doneCount/total)*100}%` : '0%';
+  const hints = ['新的一天，从打卡开始！','继续加油 💪','坚持就是胜利！🎯','太棒了，今天全勤！🎉'];
+  const hintIdx = total ? Math.min(Math.floor((doneCount/total)*3), 3) : 0;
+  document.getElementById('progressHint').textContent = hints[hintIdx];
+
+  // 渲染卡片
+  const cards = document.getElementById('checkinCards');
+  cards.innerHTML = items.map(item => `
+    <div class="checkin-card bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between border-2 border-transparent ${today[item.id]?'checked':''}" data-key="${item.id}" style="border-color:${today[item.id]?item.color:'transparent'}">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl">${item.icon}</span>
+        <div>
+          <div class="font-semibold text-gray-800">${escapeHtml(item.title)}</div>
+          <div class="text-xs text-gray-400">点击切换状态</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-1">
+        <button class="checkin-edit-btn w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 transition" data-key="${item.id}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        </button>
+        <div class="check-mark w-8 h-8 rounded-full flex items-center justify-center" style="background:${item.color}">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // 绑定事件
+  cards.querySelectorAll('.checkin-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.checkin-edit-btn')) return;
+      toggleCheckin(card.dataset.key);
+    });
+  });
+  cards.querySelectorAll('.checkin-edit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCheckinItemModal(btn.dataset.key);
+    });
+  });
+
+  // 归档区
+  renderArchiveArea();
+  renderSummary();
+}
+
+function toggleCheckin(key) {
+  const date = todayStr();
+  const all = getCheckins();
+  if (!all[date]) all[date] = {};
+  all[date][key] = !all[date][key];
+  saveCheckins(all);
+  renderCheckin();
+  if (currentPage === 'home') renderHome();
+}
+
+// ==================== 打卡项编辑 ====================
+let editingCheckinItemId = null;
+let checkinItemIcon = '🏃';
+let checkinItemColor = '#22c55e';
+let pendingArchiveItemId = null;
+
+function openCheckinItemModal(id) {
+  editingCheckinItemId = id;
+  const items = getCheckinItems();
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  checkinItemIcon = item.icon;
+  checkinItemColor = item.color;
+  document.getElementById('checkinItemNameInput').value = item.title;
+
+  // 图标选择器
+  const iconPicker = document.getElementById('checkinIconPicker');
+  const iconPool = ['🏃','🌙','💊','📖','✏️','💪','🧘','🎯','🔥','⭐','❤️','🎵','📷','🌍','🍎','💼','🏠','🎮','📅','💰','📚','🎨','🔧','💡','🛒','✈️'];
+  iconPicker.innerHTML = iconPool.map(ic => `
+    <div class="icon-option ${ic===checkinItemIcon?'selected':''}" data-icon="${ic}">${ic}</div>
+  `).join('');
+  iconPicker.querySelectorAll('.icon-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      iconPicker.querySelectorAll('.icon-option').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      checkinItemIcon = opt.dataset.icon;
+    });
+  });
+
+  // 颜色选择器
+  const colorPicker = document.getElementById('colorPicker');
+  colorPicker.innerHTML = COLOR_OPTIONS.map(c => `
+    <div class="w-8 h-8 rounded-full cursor-pointer border-2 transition ${c===checkinItemColor?'border-gray-800 scale-110':'border-transparent'}" style="background:${c}" data-color="${c}"></div>
+  `).join('');
+  colorPicker.querySelectorAll('div').forEach(d => {
+    d.addEventListener('click', () => {
+      colorPicker.querySelectorAll('div').forEach(dd => dd.classList.remove('scale-110','border-gray-800'));
+      d.classList.add('scale-110','border-gray-800');
+      checkinItemColor = d.dataset.color;
+    });
+  });
+
+  document.getElementById('checkinItemModal').classList.add('open');
+}
+
+function closeCheckinItemModal() {
+  document.getElementById('checkinItemModal').classList.remove('open');
+  editingCheckinItemId = null;
+}
+
+function confirmCheckinItem() {
+  const name = document.getElementById('checkinItemNameInput').value.trim();
+  if (!name) { alert('请输入名称'); return; }
+  const items = getCheckinItems();
+  const idx = items.findIndex(i => i.id === editingCheckinItemId);
+  if (idx !== -1) {
+    items[idx].title = name;
+    items[idx].icon = checkinItemIcon;
+    items[idx].color = checkinItemColor;
+  }
+  saveCheckinItems(items);
+  closeCheckinItemModal();
+  renderCheckin();
+}
+
+function addCheckinItem() {
+  const name = prompt('请输入新打卡项名称：');
+  if (!name || !name.trim()) return;
+  const items = getCheckinItems();
+  const icons = ['📖','💪','🧘','🎯','🔥','⭐','❤️','📷','💼','🏠','🎮','📅','💰','📚','🎨'];
+  const newItem = {
+    id: 'item_' + Date.now(),
+    title: name.trim(),
+    icon: icons[Math.floor(Math.random()*icons.length)],
+    color: COLOR_OPTIONS[Math.floor(Math.random()*COLOR_OPTIONS.length)],
+    builtin: false, archived: false
+  };
+  items.push(newItem);
+  saveCheckinItems(items);
+  renderCheckin();
+}
+
+// ==================== 归档 ====================
+function openArchiveConfirm() {
+  pendingArchiveItemId = editingCheckinItemId;
+  closeCheckinItemModal();
+  document.getElementById('archiveNoteInput').value = '';
+  document.getElementById('archiveNoteModal').classList.add('open');
+}
+
+function closeArchiveNoteModal() {
+  document.getElementById('archiveNoteModal').classList.remove('open');
+  pendingArchiveItemId = null;
+}
+
+function confirmArchive() {
+  if (!pendingArchiveItemId) return;
+  const items = getCheckinItems();
+  const item = items.find(i => i.id === pendingArchiveItemId);
+  if (!item) return;
+  const note = document.getElementById('archiveNoteInput').value.trim();
+
+  // 标记为归档
+  item.archived = true;
+  saveCheckinItems(items);
+
+  // 添加归档记录
+  const archives = getArchives();
+  archives.unshift({
+    id: 'arc_' + Date.now(),
+    itemId: item.id,
+    title: item.title,
+    icon: item.icon,
+    color: item.color,
+    completedAt: todayStr(),
+    note
+  });
+  saveArchives(archives);
+
+  closeArchiveNoteModal();
+  renderCheckin();
+}
+
+function renderArchiveArea() {
+  const archives = getArchives();
+  const archivedItems = getArchivedItems();
+  document.getElementById('archiveCount').textContent = `(${archives.length})`;
+
+  const content = document.getElementById('archiveContent');
+  if (archives.length === 0) {
+    content.innerHTML = '<p class="text-xs text-gray-400 py-2 text-center">暂无归档记录</p>';
+    return;
+  }
+  content.innerHTML = archives.map(a => `
+    <div class="py-2 border-b border-gray-50 last:border-0">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">${a.icon}</span>
+        <span class="text-sm font-medium text-gray-600">${escapeHtml(a.title)}</span>
+        <span class="text-[10px] text-gray-400">完成于 ${a.completedAt}</span>
+      </div>
+      ${a.note ? `<div class="text-xs text-gray-400 mt-1 ml-7 italic">"${escapeHtml(a.note)}"</div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ==================== 汇总统计 ====================
+function getDateRange(period) {
+  const now = new Date();
+  const dates = [];
+  if (period === 'week') {
+    const day = now.getDay() || 7;
+    const start = new Date(now); start.setDate(now.getDate() - day + 1);
+    for (let i=0;i<7;i++) { const d=new Date(start); d.setDate(start.getDate()+i); dates.push(d); }
+  } else if (period === 'month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth()+1, 0);
+    for (let i=0;i<end.getDate();i++) { const d=new Date(start); d.setDate(start.getDate()+i); dates.push(d); }
+  } else {
+    for (let i=0;i<12;i++) dates.push(new Date(now.getFullYear(), i, 1));
+  }
+  return dates;
+}
+
+function updateStreak() {
+  const all = getCheckins();
+  const items = getActiveItems();
+  const itemIds = items.map(i => i.id);
+  let streak = 0;
+  const d = new Date();
+  while (true) {
+    const record = all[fmtDate(d)] || {};
+    if (itemIds.some(id => record[id])) { streak++; d.setDate(d.getDate()-1); }
+    else break;
+  }
+  document.getElementById('streakCount').textContent = streak;
+}
+
+function updateStats() {
+  const all = getCheckins();
+  const items = getActiveItems();
+  // 动态生成统计 HTML
+  const grid = document.getElementById('statsGrid');
+  if (!grid) return;
+  const counts = {};
+  items.forEach(item => { counts[item.id] = 0; });
+
+  if (summaryPeriod === 'week') {
+    getDateRange('week').forEach(d => {
+      const r = all[fmtDate(d)]; if (r) items.forEach(item => { if (r[item.id]) counts[item.id]++; });
+    });
+  } else if (summaryPeriod === 'month') {
+    getDateRange('month').forEach(d => {
+      const r = all[fmtDate(d)]; if (r) items.forEach(item => { if (r[item.id]) counts[item.id]++; });
+    });
+  } else {
+    const yr = new Date().getFullYear();
+    for (let m=0;m<12;m++) {
+      const end = new Date(yr,m+1,0).getDate();
+      for (let d=1;d<=end;d++) {
+        const s = `${yr}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const r = all[s]; if (r) items.forEach(item => { if (r[item.id]) counts[item.id]++; });
+      }
+    }
+  }
+
+  grid.innerHTML = items.map(item => `
+    <div class="text-center rounded-xl py-2" style="background:${item.color}15">
+      <div class="text-xs text-gray-500">${item.icon} ${escapeHtml(item.title)}</div>
+      <div class="text-lg font-bold" style="color:${item.color}">${counts[item.id]||0}</div>
+      <div class="text-xs text-gray-400">次</div>
+    </div>
+  `).join('');
+}
+
+function renderSummary() {
+  updateStreak();
+  updateStats();
+  // 切换视图
+  document.getElementById('summaryWeekView').style.display = summaryPeriod==='week'?'block':'none';
+  document.getElementById('summaryMonthView').style.display = summaryPeriod==='month'?'block':'none';
+  document.getElementById('summaryYearView').style.display = summaryPeriod==='year'?'block':'none';
+
+  if (summaryPeriod === 'week') renderWeekChart();
+  else if (summaryPeriod === 'month') renderMonthCalendar();
+  else renderYearChart();
+}
+
+function renderWeekChart() {
+  const ctx = document.getElementById('weekChart');
+  if (!ctx) return;
+  if (weekChart) weekChart.destroy();
+  const all = getCheckins();
+  const items = getActiveItems();
+  const weekdays = ['一','二','三','四','五','六','日'];
+  const dates = getDateRange('week');
+
+  const datasets = items.map(item => ({
+    label: item.icon + ' ' + item.title,
+    data: dates.map(d => (all[fmtDate(d)]||{})[item.id] ? 1 : 0),
+    backgroundColor: item.color + 'CC',
+    borderColor: item.color, borderWidth: 1, borderRadius: 6, borderSkipped: false,
+    stack: 'stack0',
+  }));
+
+  weekChart = new Chart(ctx, {
+    type: 'bar', data: { labels: weekdays, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'top', labels: { boxWidth:10, boxHeight:10, padding:10, font:{size:10}, usePointStyle:true } } },
+      scales: { y: { beginAtZero:true, max:items.length, stacked:true, ticks:{stepSize:1,font:{size:11}}, grid:{color:'#f1f5f9'} }, x: { stacked:true, ticks:{font:{size:10}}, grid:{display:false} } },
+      animation: { duration: 400 }
+    }
+  });
+}
+
+function renderMonthCalendar() {
+  const all = getCheckins();
+  const items = getActiveItems();
+  const now = new Date();
+  const yr = now.getFullYear(), mo = now.getMonth();
+  document.getElementById('monthLabel').textContent = `${yr}年${mo+1}月`;
+
+  const totalDays = new Date(yr, mo+1, 0).getDate();
+  const firstDay = new Date(yr, mo, 1).getDay() || 7;
+  const today = new Date().getDate();
+  const isCurrentMonth = (now.getFullYear()===yr && now.getMonth()===mo);
+
+  const grid = document.getElementById('monthCalendar');
+  grid.innerHTML = '';
+
+  for (let i=1; i<firstDay; i++) {
+    const div = document.createElement('div');
+    div.className = 'aspect-square rounded-lg';
+    grid.appendChild(div);
+  }
+
+  for (let d=1; d<=totalDays; d++) {
+    const s = `${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const record = all[s] || {};
+    const dayOfWeek = new Date(yr, mo, d).getDay();
+    const isWeekend = dayOfWeek===0 || dayOfWeek===6;
+
+    const div = document.createElement('div');
+    div.className = `aspect-square rounded-lg flex flex-col items-center justify-center text-[10px] relative ${isCurrentMonth && d===today ? 'ring-2 ring-teal-400 ring-offset-1' : ''}`;
+
+    const dateSpan = document.createElement('span');
+    dateSpan.className = `font-semibold ${isWeekend?'text-gray-400':'text-gray-600'}`;
+    dateSpan.textContent = d;
+    div.appendChild(dateSpan);
+
+    const dots = document.createElement('div');
+    dots.className = 'flex gap-0.5 mt-0.5';
+    items.forEach(item => {
+      const dot = document.createElement('span');
+      dot.className = `w-1.5 h-1.5 rounded-full`;
+      dot.style.backgroundColor = record[item.id] ? item.color : '#e5e7eb';
+      dots.appendChild(dot);
+    });
+    div.appendChild(dots);
+
+    const done = items.filter(i => record[i.id]).length;
+    div.title = `${s}: ${done}/${items.length} 项完成`;
+    grid.appendChild(div);
+  }
+
+  // 更新图例
+  updateMonthLegend(items);
+}
+
+function updateMonthLegend(items) {
+  let legend = document.getElementById('monthLegend');
+  if (!legend) {
+    legend = document.createElement('div');
+    legend.id = 'monthLegend';
+    legend.className = 'flex items-center justify-center gap-3 mt-2 text-[10px] text-gray-400 flex-wrap';
+    const cal = document.getElementById('monthCalendar');
+    if (cal) cal.parentNode.appendChild(legend);
+  }
+  legend.innerHTML = items.map(i => `
+    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:${i.color}"></span> ${i.icon} ${escapeHtml(i.title)}</span>
+  `).join('');
+}
+
+function renderYearChart() {
+  const ctx = document.getElementById('yearChart');
+  if (!ctx) return;
+  if (yearChart) yearChart.destroy();
+  const all = getCheckins();
+  const items = getActiveItems();
+  const yr = new Date().getFullYear();
+  const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+  const datasets = items.map(item => ({
+    label: item.icon + ' ' + item.title,
+    data: months.map((_, m) => {
+      let cnt = 0;
+      const end = new Date(yr, m+1, 0).getDate();
+      for (let d=1; d<=end; d++) {
+        const s = `${yr}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        if ((all[s]||{})[item.id]) cnt++;
+      }
+      return cnt;
+    }),
+    backgroundColor: item.color + 'CC',
+    borderColor: item.color,
+    borderWidth: 1, borderRadius: 8, borderSkipped: false,
+  }));
+
+  yearChart = new Chart(ctx, {
+    type: 'bar', data: { labels: months, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'top', labels: { boxWidth:10, boxHeight:10, padding:10, font:{size:10}, usePointStyle:true } } },
+      scales: { y: { beginAtZero:true, ticks:{font:{size:11}}, grid:{color:'#f1f5f9'}, title:{display:true,text:'完成次数',font:{size:10}} }, x: { ticks:{font:{size:10}}, grid:{display:false} } },
+      animation: { duration: 500 }
+    }
+  });
+}
+
+// ==================== To-do List ====================
+function renderTodo() {
+  const todos = getTodos();
+  const dateTodos = todos.filter(t => t.date === todoViewDate);
+  const pending = dateTodos.filter(t => !t.done);
+  const done = dateTodos.filter(t => t.done);
+  const sorted = [...pending, ...done];
+
+  const listEl = document.getElementById('todoList');
+  const emptyEl = document.getElementById('todoEmpty');
+  if (!listEl || !emptyEl) return;
+
+  if (sorted.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+  } else {
+    emptyEl.style.display = 'none';
+    listEl.innerHTML = sorted.map(t => `
+      <div class="todo-item ${t.done?'done':''} bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 group" data-id="${t.id}">
+        <button class="todo-circle flex-shrink-0 w-6 h-6 rounded-full border-2 border-gray-300 flex items-center justify-center todo-toggle-btn" data-id="${t.id}">
+          ${t.done ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
+        </button>
+        <span class="todo-text flex-1 text-sm text-gray-700">${escapeHtml(t.text)}</span>
+        <button class="todo-delete-btn flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition opacity-0 group-hover:opacity-100 active:opacity-100" data-id="${t.id}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
+    `).join('');
+  }
+  updateTodoDateLabel();
+}
+
+function updateTodoDateLabel() {
+  const label = document.getElementById('todoDateLabel');
+  if (!label) return;
+  const today = todayStr();
+  if (todoViewDate === today) { label.textContent = '今天'; return; }
+  const d = parseDate(todoViewDate);
+  const weekdays = ['日','一','二','三','四','五','六'];
+  label.textContent = `${d.getMonth()+1}/${d.getDate()} 周${weekdays[d.getDay()]}`;
+}
+
+function addTodo() {
+  const input = document.getElementById('todoInput');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const todos = getTodos();
+  todos.unshift({ id: Date.now().toString(), text, date: todoViewDate, done: false });
+  saveTodos(todos);
+  input.value = '';
+  renderTodo();
+  if (currentPage === 'home') renderHome();
+}
+
+function toggleTodo(id) {
+  const todos = getTodos();
+  const todo = todos.find(t => t.id === id);
+  if (todo) { todo.done = !todo.done; saveTodos(todos); renderTodo(); if (currentPage==='home') renderHome(); }
+}
+
+function deleteTodo(id) {
+  if (!confirm('确定删除这条待办吗？')) return;
+  saveTodos(getTodos().filter(t => t.id !== id));
+  renderTodo();
+}
+
+// ==================== 阅读记录 ====================
+function renderBooks() {
+  const books = getBooks();
+  const listEl = document.getElementById('bookList');
+  const emptyEl = document.getElementById('bookEmpty');
+  if (!listEl || !emptyEl) return;
+
+  if (books.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  listEl.innerHTML = books.map(b => `
+    <div class="book-card bg-white rounded-2xl shadow-sm overflow-hidden" data-id="${b.id}">
+      <!-- 折叠标题栏 -->
+      <div class="flex items-center gap-3 px-4 py-3 book-header cursor-pointer select-none" data-id="${b.id}">
+        <span class="text-xl">📖</span>
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-gray-800 text-sm truncate">${escapeHtml(b.title)}</div>
+          ${b.author ? `<div class="text-xs text-gray-400">${escapeHtml(b.author)}</div>` : ''}
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-xs text-gray-400">${[1,2,3,4,5].map(i => i<=b.rating?'★':'☆').join('')}</span>
+        </div>
+        <svg class="w-4 h-4 text-gray-300 transition-transform duration-300 book-chevron" data-id="${b.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+
+      <!-- 展开内容 -->
+      <div class="book-expand px-4" data-id="${b.id}">
+        <!-- 子模块1: 书籍信息 -->
+        <div class="mb-3">
+          <div class="sub-module-header"><span>📖</span> 书籍信息</div>
+          <div class="flex gap-3">
+            <div class="w-16 h-20 flex-shrink-0 rounded-lg bg-gray-100 overflow-hidden" id="cover-${b.id}">
+              ${b.coverImageId ? '<div class="w-full h-full flex items-center justify-center text-gray-300"><svg class="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>' : '<div class="w-full h-full flex items-center justify-center text-2xl bg-gradient-to-br from-teal-100 to-cyan-100">📖</div>'}
+            </div>
+            <div class="flex-1 text-sm">
+              <div class="text-gray-500 text-xs">书名</div>
+              <div class="text-gray-800 font-medium">${escapeHtml(b.title)}</div>
+              <div class="text-gray-500 text-xs mt-1.5">作者</div>
+              <div class="text-gray-800">${b.author ? escapeHtml(b.author) : '<span class="text-gray-300 italic">未填写</span>'}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 子模块2: 阅读评分 -->
+        <div class="mb-3">
+          <div class="sub-module-header"><span>⭐</span> 阅读评分</div>
+          <div class="flex items-center gap-4">
+            <div>
+              <div class="text-xs text-gray-500 mb-1">星级评分</div>
+              <div class="flex gap-0.5 text-lg">${[1,2,3,4,5].map(i => `<span class="${i<=b.rating?'text-amber-400':'text-gray-200'}">★</span>`).join('')}</div>
+            </div>
+            <div class="flex-1">
+              <div class="text-xs text-gray-500 mb-1">阅读指数 <span class="font-bold text-teal-600">${b.readingIndex||0}</span></div>
+              <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                <div class="bg-gradient-to-r from-teal-400 to-cyan-500 h-full rounded-full" style="width:${b.readingIndex||0}%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 子模块3: 读书心得 -->
+        <div class="mb-2">
+          <div class="sub-module-header"><span>✍️</span> 读书心得</div>
+          <div class="text-sm text-gray-600 leading-relaxed bg-gray-50 rounded-xl p-3">
+            ${b.notes ? escapeHtml(b.notes) : '<span class="text-gray-300 italic">暂无心得</span>'}
+          </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="flex gap-2 mt-3 pb-1">
+          <button class="book-edit-btn flex-1 py-2 rounded-xl border border-teal-200 text-teal-600 text-xs font-semibold hover:bg-teal-50 transition" data-id="${b.id}">
+            <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            编辑
+          </button>
+          <button class="book-delete-btn flex-1 py-2 rounded-xl border border-red-200 text-red-400 text-xs font-semibold hover:bg-red-50 transition" data-id="${b.id}">
+            <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // 异步加载封面图片
+  books.forEach(async b => {
+    if (!b.coverImageId) return;
+    try {
+      const blob = await loadImage(b.coverImageId);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const coverEl = document.getElementById('cover-' + b.id);
+        if (coverEl) coverEl.innerHTML = `<img src="${url}" class="w-full h-full object-cover" alt="封面">`;
+      }
+    } catch(e) {}
+  });
+
+  // 绑定展开/折叠
+  listEl.querySelectorAll('.book-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const id = header.dataset.id;
+      const expand = listEl.querySelector(`.book-expand[data-id="${id}"]`);
+      const chevron = listEl.querySelector(`.book-chevron[data-id="${id}"]`);
+      const isOpen = expand.classList.contains('open');
+      if (isOpen) {
+        expand.classList.remove('open');
+        chevron.style.transform = 'rotate(0deg)';
+      } else {
+        expand.classList.add('open');
+        chevron.style.transform = 'rotate(180deg)';
+      }
+    });
+  });
+
+  // 绑定编辑/删除
+  listEl.querySelectorAll('.book-edit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openBookModal(btn.dataset.id); });
+  });
+  listEl.querySelectorAll('.book-delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm('确定删除这本书吗？')) deleteBook(btn.dataset.id);
+    });
+  });
+}
+
+function openBookModal(id) {
+  editingBookId = id || null;
+  bookRating = 0;
+  bookCoverFile = null;
+  bookCoverDataUrl = null;
+
+  const book = id ? getBooks().find(b => b.id === id) : null;
+  document.getElementById('bookModalTitle').textContent = book ? '编辑书籍' : '添加书籍';
+  document.getElementById('bookTitleInput').value = book ? book.title : '';
+  document.getElementById('bookAuthorInput').value = book ? (book.author||'') : '';
+  document.getElementById('bookNotesInput').value = book ? (book.notes||'') : '';
+  document.getElementById('bookIndexSlider').value = book ? (book.readingIndex||50) : 50;
+  document.getElementById('indexValue').textContent = book ? (book.readingIndex||50) : 50;
+
+  // 评分
+  bookRating = book ? (book.rating||0) : 0;
+  renderStars();
+
+  // 封面预览
+  const preview = document.getElementById('coverPreview');
+  const placeholder = document.getElementById('coverPlaceholder');
+  const upload = document.getElementById('coverUpload');
+  const removeBtn = document.getElementById('removeCoverBtn');
+  preview.classList.add('hidden');
+  placeholder.classList.remove('hidden');
+  upload.classList.remove('has-image');
+  removeBtn.classList.add('hidden');
+
+  if (book && book.coverImageId) {
+    // 异步加载已有封面
+    loadImage(book.coverImageId).then(blob => {
+      if (blob) {
+        bookCoverDataUrl = URL.createObjectURL(blob);
+        preview.src = bookCoverDataUrl;
+        preview.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        upload.classList.add('has-image');
+        removeBtn.classList.remove('hidden');
+      }
+    });
+  }
+
+  document.getElementById('bookModal').classList.add('open');
+}
+
+function renderStars() {
+  const container = document.getElementById('starRating');
+  container.querySelectorAll('.star-btn').forEach(star => {
+    const s = parseInt(star.dataset.star);
+    star.classList.toggle('active', s <= bookRating);
+  });
+}
+
+function closeBookModal() {
+  document.getElementById('bookModal').classList.remove('open');
+  editingBookId = null;
+  bookRating = 0;
+  bookCoverFile = null;
+  if (bookCoverDataUrl && bookCoverDataUrl.startsWith('blob:')) URL.revokeObjectURL(bookCoverDataUrl);
+  bookCoverDataUrl = null;
+  document.getElementById('bookTitleInput').value = '';
+  document.getElementById('bookAuthorInput').value = '';
+  document.getElementById('bookNotesInput').value = '';
+  document.getElementById('bookIndexSlider').value = 50;
+  document.getElementById('indexValue').textContent = '50';
+  document.getElementById('coverFileInput').value = '';
+}
+
+async function confirmBook() {
+  const title = document.getElementById('bookTitleInput').value.trim();
+  if (!title) { alert('请输入书名'); return; }
+
+  const author = document.getElementById('bookAuthorInput').value.trim();
+  const notes = document.getElementById('bookNotesInput').value.trim();
+  const readingIndex = parseInt(document.getElementById('bookIndexSlider').value);
+
+  let coverImageId = null;
+  const books = getBooks();
+
+  if (editingBookId) {
+    const book = books.find(b => b.id === editingBookId);
+    if (book) coverImageId = book.coverImageId;
+  }
+
+  // 处理封面
+  if (bookCoverFile) {
+    // 有新文件
+    if (coverImageId) await deleteImage(coverImageId).catch(()=>{});
+    coverImageId = 'img_' + Date.now();
+    await saveImage(coverImageId, bookCoverFile);
+  } else if (bookCoverDataUrl && !bookCoverFile && editingBookId) {
+    // 保持旧封面，不变
+  } else if (!bookCoverDataUrl && editingBookId && coverImageId) {
+    // 移除了封面
+    await deleteImage(coverImageId).catch(()=>{});
+    coverImageId = null;
+  }
+
+  const bookData = {
+    id: editingBookId || 'book_' + Date.now(),
+    title,
+    author,
+    coverImageId,
+    readingIndex,
+    rating: bookRating,
+    notes,
+    createdAt: editingBookId ? (books.find(b=>b.id===editingBookId)?.createdAt || todayStr()) : todayStr(),
+  };
+
+  if (editingBookId) {
+    const idx = books.findIndex(b => b.id === editingBookId);
+    if (idx !== -1) books[idx] = bookData;
+  } else {
+    books.unshift(bookData);
+  }
+  saveBooks(books);
+  closeBookModal();
+  renderBooks();
+}
+
+async function deleteBook(id) {
+  const books = getBooks();
+  const book = books.find(b => b.id === id);
+  if (!book) return;
+  if (book.coverImageId) await deleteImage(book.coverImageId).catch(()=>{});
+  saveBooks(books.filter(b => b.id !== id));
+  renderBooks();
+}
+
+// ==================== 事件绑定 ====================
+function bindEvents() {
+  // 汉堡菜单
+  document.getElementById('menuBtn').addEventListener('click', openDrawer);
+  document.getElementById('drawerOverlay').addEventListener('click', closeDrawer);
+
+  // 底部回到首页
+  document.getElementById('homeBtn').addEventListener('click', () => navigateTo('home', '幸运鲤的工作台'));
+
+  // 首页快捷入口
+  document.querySelectorAll('.quick-link').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const page = btn.dataset.page;
+      const titles = { checkin:'每日打卡', todo:'To-do List', books:'阅读记录' };
+      navigateTo(page, titles[page] || '');
+    });
+  });
+
+  // 打卡卡片
+  document.querySelectorAll('#page-checkin .checkin-card').forEach(card => {
+    card.addEventListener('click', () => toggleCheckin(card.dataset.key));
+  });
+
+  // 汇总子 Tab
+  document.querySelectorAll('.sub-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      summaryPeriod = btn.dataset.period;
+      renderSummary();
+    });
+  });
+
+  // Todo 操作
+  const todoAddBtn = document.getElementById('todoAddBtn');
+  const todoInput = document.getElementById('todoInput');
+  if (todoAddBtn) todoAddBtn.addEventListener('click', addTodo);
+  if (todoInput) todoInput.addEventListener('keydown', e => { if (e.key==='Enter') addTodo(); });
+
+  const todoList = document.getElementById('todoList');
+  if (todoList) {
+    todoList.addEventListener('click', e => {
+      const toggleBtn = e.target.closest('.todo-toggle-btn');
+      const deleteBtn = e.target.closest('.todo-delete-btn');
+      if (toggleBtn) toggleTodo(toggleBtn.dataset.id);
+      if (deleteBtn) deleteTodo(deleteBtn.dataset.id);
+    });
+  }
+
+  // Todo 日期切换
+  document.getElementById('todoPrevDay')?.addEventListener('click', () => {
+    const d = parseDate(todoViewDate); d.setDate(d.getDate()-1);
+    todoViewDate = fmtDate(d); renderTodo();
+  });
+  document.getElementById('todoNextDay')?.addEventListener('click', () => {
+    const d = parseDate(todoViewDate); d.setDate(d.getDate()+1);
+    todoViewDate = fmtDate(d); renderTodo();
+  });
+
+  // 添加事项按钮
+  document.getElementById('addSectionBtn').addEventListener('click', () => openSectionModal(null));
+
+  // 弹窗
+  document.getElementById('modalCancel').addEventListener('click', closeSectionModal);
+  document.getElementById('modalConfirm').addEventListener('click', confirmSection);
+  document.getElementById('sectionModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSectionModal();
+  });
+
+  // 触摸滑动关闭抽屉（右滑）
+  let touchStartX = 0;
+  const drawer = document.getElementById('drawer');
+  drawer.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, {passive:true});
+  drawer.addEventListener('touchmove', e => {
+    const dx = e.touches[0].clientX - touchStartX;
+    if (dx < -50) closeDrawer();
+  }, {passive:true});
+
+  // ===== 阅读记录事件 =====
+  document.getElementById('addBookBtn').addEventListener('click', () => openBookModal(null));
+
+  // 封面上传
+  const coverUpload = document.getElementById('coverUpload');
+  const coverFileInput = document.getElementById('coverFileInput');
+  coverUpload.addEventListener('click', () => coverFileInput.click());
+  coverFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    bookCoverFile = file;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      bookCoverDataUrl = ev.target.result;
+      const preview = document.getElementById('coverPreview');
+      const placeholder = document.getElementById('coverPlaceholder');
+      const removeBtn = document.getElementById('removeCoverBtn');
+      preview.src = bookCoverDataUrl;
+      preview.classList.remove('hidden');
+      placeholder.classList.add('hidden');
+      coverUpload.classList.add('has-image');
+      removeBtn.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // 移除封面
+  document.getElementById('removeCoverBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    bookCoverFile = null;
+    if (bookCoverDataUrl && bookCoverDataUrl.startsWith('blob:')) URL.revokeObjectURL(bookCoverDataUrl);
+    bookCoverDataUrl = null;
+    document.getElementById('coverPreview').classList.add('hidden');
+    document.getElementById('coverPlaceholder').classList.remove('hidden');
+    document.getElementById('coverUpload').classList.remove('has-image');
+    document.getElementById('removeCoverBtn').classList.add('hidden');
+    coverFileInput.value = '';
+  });
+
+  // 星级评分
+  document.getElementById('starRating').addEventListener('click', (e) => {
+    const star = e.target.closest('.star-btn');
+    if (!star) return;
+    bookRating = parseInt(star.dataset.star);
+    renderStars();
+  });
+
+  // 阅读指数滑块
+  const indexSlider = document.getElementById('bookIndexSlider');
+  indexSlider.addEventListener('input', () => {
+    document.getElementById('indexValue').textContent = indexSlider.value;
+  });
+
+  // 弹窗
+  document.getElementById('bookModalCancel').addEventListener('click', closeBookModal);
+  document.getElementById('bookModalConfirm').addEventListener('click', confirmBook);
+  document.getElementById('bookModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeBookModal();
+  });
+
+  // ===== 打卡项事件 =====
+  document.getElementById('addCheckinItemBtn').addEventListener('click', addCheckinItem);
+  document.getElementById('checkinItemCancel').addEventListener('click', closeCheckinItemModal);
+  document.getElementById('checkinItemConfirm').addEventListener('click', confirmCheckinItem);
+  document.getElementById('checkinItemModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeCheckinItemModal();
+  });
+  document.getElementById('archiveItemBtn').addEventListener('click', openArchiveConfirm);
+  document.getElementById('archiveNoteCancel').addEventListener('click', closeArchiveNoteModal);
+  document.getElementById('archiveNoteConfirm').addEventListener('click', confirmArchive);
+  document.getElementById('archiveNoteModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeArchiveNoteModal();
+  });
+
+  // 归档展开/折叠
+  document.getElementById('archiveToggle').addEventListener('click', () => {
+    const content = document.getElementById('archiveContent');
+    const chevron = document.getElementById('archiveChevron');
+    if (content.style.maxHeight === '0px' || !content.style.maxHeight) {
+      content.style.maxHeight = content.scrollHeight + 'px';
+      content.style.opacity = '1';
+      chevron.style.transform = 'rotate(180deg)';
+    } else {
+      content.style.maxHeight = '0px';
+      content.style.opacity = '0';
+      chevron.style.transform = 'rotate(0deg)';
+    }
+  });
+}
+
+// 启动
+document.addEventListener('DOMContentLoaded', init);
+
+// PWA Service Worker 注册
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
