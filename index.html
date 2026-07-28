@@ -455,18 +455,21 @@
         <div class="text-xs text-gray-500 mb-2">颜色</div>
         <div class="flex flex-wrap gap-2" id="colorPicker"></div>
       </div>
+      <!-- 关联指标 -->
+      <div class="mb-4 mt-4 pt-4 border-t border-gray-100">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-gray-600 font-semibold">📈 关联指标</span>
+          <button id="addMetricConfigBtn" class="px-4 py-2 rounded-xl bg-teal-50 text-teal-600 text-sm font-semibold hover:bg-teal-100 active:scale-95 transition flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+            添加指标
+          </button>
+        </div>
+        <div id="metricConfigList" class="space-y-2"></div>
+      </div>
       <!-- 按钮 -->
       <div class="flex gap-2 mb-2">
         <button id="checkinItemCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
         <button id="checkinItemConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">保存</button>
-      </div>
-      <!-- 关联指标 -->
-      <div class="mb-3">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs text-gray-500">关联指标（如体重、体脂率）</span>
-          <button id="addMetricConfigBtn" class="text-xs text-teal-500 font-medium hover:text-teal-600">+ 添加</button>
-        </div>
-        <div id="metricConfigList" class="space-y-2"></div>
       </div>
       <button id="archiveItemBtn" class="w-full py-3 rounded-xl border border-orange-200 text-orange-500 font-semibold text-sm hover:bg-orange-50 transition active:scale-95">📦 归档此打卡项</button>
       <button id="deleteItemBtn" class="w-full py-3 rounded-xl border border-red-200 text-red-400 font-semibold text-sm hover:bg-red-50 transition active:scale-95 mt-2 hidden">🗑 删除此打卡项</button>
@@ -1318,14 +1321,18 @@ function saveMetricConfigFromUI() {
   saveMetricConfig(cfg);
 }
 
-// 添加指标
-document.getElementById('addMetricConfigBtn').addEventListener('click', () => {
+// 添加指标 —— 使用 onclick 直接绑定，确保可靠
+document.getElementById('addMetricConfigBtn').onclick = function() {
+  if (!editingCheckinItemId) {
+    alert('请先保存打卡项后再添加指标');
+    return;
+  }
   const cfg = getMetricConfig();
   const itemCfg = ensureMetricConfig(editingCheckinItemId);
   itemCfg.metrics.push({ key: `metric_${Date.now()}_${itemCfg.metrics.length}`, label: '', unit: '' });
   saveMetricConfig(cfg);
   renderMetricConfig(editingCheckinItemId);
-});
+};
 
 function addCheckinItem() {
   const name = prompt('请输入新打卡项名称：');
