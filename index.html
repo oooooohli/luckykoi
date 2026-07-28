@@ -592,7 +592,10 @@ function getCheckinItems() {
       if (changed) saveCheckinItems(items);
       return items;
     }
-  } catch(e) {}
+  } catch(e) {
+    console.error('Failed to load checkin items:', e);
+    return [...DEFAULT_CHECKIN_ITEMS]; // 返回默认值而不清除数据
+  }
   // 迁移旧数据
   const oldCheckins = getCheckinsRaw();
   const migrated = [...DEFAULT_CHECKIN_ITEMS];
@@ -698,12 +701,18 @@ function init() {
     bindEvents();
     getSections();
   } catch(e) {
-    // 数据损坏时重置
-    console.error('Init error, resetting data:', e);
-    localStorage.removeItem('luckyKoi.checkinItems');
-    localStorage.removeItem('luckyKoi.checkin');
-    localStorage.removeItem('luckyKoi.archives');
-    location.reload();
+    // 出错时仅输出日志，不清除用户数据
+    console.error('Init error:', e);
+    // 尝试最小化恢复：只渲染基本页面
+    try {
+      updateHeaderDate();
+      renderDrawer();
+      renderHome();
+      renderCheckin();
+      renderTodo();
+    } catch(e2) {
+      console.error('Recovery also failed:', e2);
+    }
   }
 }
 
