@@ -278,6 +278,19 @@
 
         <div class="grid grid-cols-3 gap-2 mt-3" id="statsGrid"></div>
       </div>
+
+      <!-- 指标趋势 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-5" id="metricTrendSection">
+        <h3 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><span>📈</span> 指标趋势</h3>
+        <div id="metricTrendEmpty" class="text-center text-gray-400 text-xs py-6">
+          <p>还没有指标记录</p>
+          <p class="mt-1">在打卡项编辑中关联指标，打卡时录入即可在此查看趋势</p>
+        </div>
+        <div id="metricTrendContent" style="display:none">
+          <div class="flex gap-2 mb-3 overflow-x-auto" id="metricTabs"></div>
+          <div class="relative" style="height:240px"><canvas id="metricLineChart"></canvas></div>
+        </div>
+      </div>
     </div>
 
     <!-- ===== To-do List ===== -->
@@ -447,6 +460,14 @@
         <button id="checkinItemCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
         <button id="checkinItemConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">保存</button>
       </div>
+      <!-- 关联指标 -->
+      <div class="mb-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs text-gray-500">关联指标（如体重、体脂率）</span>
+          <button id="addMetricConfigBtn" class="text-xs text-teal-500 font-medium hover:text-teal-600">+ 添加</button>
+        </div>
+        <div id="metricConfigList" class="space-y-2"></div>
+      </div>
       <button id="archiveItemBtn" class="w-full py-3 rounded-xl border border-orange-200 text-orange-500 font-semibold text-sm hover:bg-orange-50 transition active:scale-95">📦 归档此打卡项</button>
       <button id="deleteItemBtn" class="w-full py-3 rounded-xl border border-red-200 text-red-400 font-semibold text-sm hover:bg-red-50 transition active:scale-95 mt-2 hidden">🗑 删除此打卡项</button>
     </div>
@@ -478,6 +499,8 @@ const STORAGE_SECTIONS= 'luckyKoi.sections';
 const STORAGE_BOOKS   = 'luckyKoi.books';
 const STORAGE_ITEMS   = 'luckyKoi.checkinItems';
 const STORAGE_ARCHIVES= 'luckyKoi.archives';
+const STORAGE_METRICS = 'luckyKoi.metrics';
+const STORAGE_METRIC_CFG = 'luckyKoi.metricConfig';
 const IDB_NAME = 'luckyKoiDB';
 const IDB_STORE = 'images';
 
@@ -504,6 +527,21 @@ function parseDate(s) { const [y,m,d]=s.split('-'); return new Date(+y,+m-1,+d);
 function getCheckins() { try { return JSON.parse(localStorage.getItem(STORAGE_CHECKIN)||'{}'); } catch(e) { return {}; } }
 function getCheckinsRaw() { try { return JSON.parse(localStorage.getItem(STORAGE_CHECKIN)||'{}'); } catch(e) { return {}; } }
 function saveCheckins(d) { localStorage.setItem(STORAGE_CHECKIN, JSON.stringify(d)); }
+
+// 指标记录：{ "2026-07-28": { "item_sport": { "weight": 70.5, "bodyFat": 22 } } }
+function getMetrics() { try { return JSON.parse(localStorage.getItem(STORAGE_METRICS)||'{}'); } catch(e) { return {}; } }
+function saveMetrics(d) { localStorage.setItem(STORAGE_METRICS, JSON.stringify(d)); }
+
+// 指标配置：{ "item_sport": { "metrics": [{"key":"weight","label":"体重","unit":"kg"},{"key":"bodyFat","label":"体脂率","unit":"%"}] } }
+function getMetricConfig() { try { return JSON.parse(localStorage.getItem(STORAGE_METRIC_CFG)||'{}'); } catch(e) { return {}; } }
+function saveMetricConfig(d) { localStorage.setItem(STORAGE_METRIC_CFG, JSON.stringify(d)); }
+function getItemMetricConfig(itemId) { const cfg = getMetricConfig(); return cfg[itemId] || { metrics: [] }; }
+function ensureMetricConfig(itemId) {
+  const cfg = getMetricConfig();
+  if (!cfg[itemId]) cfg[itemId] = { metrics: [] };
+  saveMetricConfig(cfg);
+  return cfg[itemId];
+}
 
 function getTodos() { try { return JSON.parse(localStorage.getItem(STORAGE_TODOS)||'[]'); } catch(e) { return []; } }
 function saveTodos(d) { localStorage.setItem(STORAGE_TODOS, JSON.stringify(d)); }
@@ -638,6 +676,8 @@ let summaryPeriod = 'week';     // 汇总周期
 let todoViewDate = todayStr();  // Todo 日期
 let weekChart = null;           // 周图表
 let yearChart = null;           // 年图表
+let metricLineChart = null;     // 指标折线图
+let metricTrendItem = null;     // 当前选中的指标项
 let editingSectionId = null;    // 正在编辑的事项 ID
 let editingBookId = null;       // 正在编辑的书籍 ID
 let bookRating = 0;             // 当前评分
@@ -1018,10 +1058,99 @@ function toggleCheckin(key, dateStr) {
   const date = dateStr || todayStr();
   const all = getCheckins();
   if (!all[date]) all[date] = {};
+  const wasChecked = !!all[date][key];
   all[date][key] = !all[date][key];
   saveCheckins(all);
   renderCheckin();
   if (currentPage === 'home') renderHome();
+  // 如果从未打卡变为已打卡，且该打卡项配置了指标，弹出指标录入
+  if (!wasChecked && all[date][key]) {
+    openMetricEntry(key, date);
+  }
+}
+
+// ========== 指标录入面板 ==========
+function openMetricEntry(itemId, dateStr) {
+  const cfg = getItemMetricConfig(itemId);
+  if (!cfg.metrics || cfg.metrics.length === 0) return; // 没有配置指标，跳过
+  const item = getCheckinItems().find(i => i.id === itemId);
+  if (!item) return;
+
+  const existing = document.getElementById('metricEntryOverlay');
+  if (existing) existing.remove();
+
+  const existingMetrics = getMetrics();
+  const existingRecord = (existingMetrics[dateStr] || {})[itemId] || {};
+
+  const parts = dateStr.split('-');
+  const displayDate = `${parts[0]}年${parseInt(parts[1])}月${parseInt(parts[2])}日`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'metricEntryOverlay';
+  overlay.className = 'fixed inset-0 bg-black/40 z-[70] flex items-end justify-center';
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeMetricEntry();
+  });
+
+  overlay.innerHTML = `
+    <div class="bg-white rounded-t-3xl w-full max-w-lg p-5 animate-slide-up" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-lg font-bold text-gray-800">${item.icon} ${escapeHtml(item.title)} · 指标录入</h3>
+          <p class="text-xs text-gray-400 mt-0.5">${displayDate}</p>
+        </div>
+        <button class="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition" onclick="closeMetricEntry()">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="space-y-3 mb-4">
+        ${cfg.metrics.map(m => `
+          <div class="flex items-center gap-3">
+            <label class="text-sm text-gray-600 w-16 flex-shrink-0">${escapeHtml(m.label)}</label>
+            <div class="flex-1 flex items-center gap-2">
+              <input type="number" step="0.1" class="metric-value-input flex-1 px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition" placeholder="输入${escapeHtml(m.label)}" value="${existingRecord[m.key] || ''}" data-key="${m.key}">
+              <span class="text-xs text-gray-400 w-8">${escapeHtml(m.unit)}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="flex gap-2">
+        <button class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition" onclick="closeMetricEntry()">跳过</button>
+        <button id="saveMetricBtn" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition" data-item="${itemId}" data-date="${dateStr}">保存</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // 动画
+  requestAnimationFrame(() => {
+    const sheet = overlay.querySelector('.animate-slide-up');
+    if (sheet) {
+      sheet.style.transform = 'translateY(100%)';
+      sheet.style.transition = 'transform 0.3s ease-out';
+      requestAnimationFrame(() => { sheet.style.transform = 'translateY(0)'; });
+    }
+  });
+
+  // 保存按钮
+  document.getElementById('saveMetricBtn').addEventListener('click', () => {
+    const values = {};
+    overlay.querySelectorAll('.metric-value-input').forEach(input => {
+      const v = parseFloat(input.value);
+      if (!isNaN(v)) values[input.dataset.key] = v;
+    });
+    const allMetrics = getMetrics();
+    if (!allMetrics[dateStr]) allMetrics[dateStr] = {};
+    allMetrics[dateStr][itemId] = values;
+    saveMetrics(allMetrics);
+    closeMetricEntry();
+  });
+}
+
+function closeMetricEntry() {
+  const overlay = document.getElementById('metricEntryOverlay');
+  if (overlay) overlay.remove();
 }
 
 function addChildItem(parentId) {
@@ -1096,6 +1225,9 @@ function openCheckinItemModal(id) {
 
   document.getElementById('checkinItemModal').classList.add('open');
 
+  // 渲染关联指标配置
+  renderMetricConfig(id);
+
   // 子项或非内置项显示删除按钮，父级预置项隐藏
   const deleteBtn = document.getElementById('deleteItemBtn');
   deleteBtn.classList.toggle('hidden', item.builtin && !item.parentId);
@@ -1117,6 +1249,8 @@ function confirmCheckinItem() {
     items[idx].color = checkinItemColor;
   }
   saveCheckinItems(items);
+  // 保存指标配置
+  saveMetricConfigFromUI();
   closeCheckinItemModal();
   renderCheckin();
 }
@@ -1138,6 +1272,60 @@ function deleteCheckinItem() {
   closeCheckinItemModal();
   renderCheckin();
 }
+
+// ========== 指标配置管理 ==========
+function renderMetricConfig(itemId) {
+  const container = document.getElementById('metricConfigList');
+  if (!container) return;
+  const cfg = getItemMetricConfig(itemId);
+  container.innerHTML = cfg.metrics.map((m, idx) => `
+    <div class="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+      <input type="text" class="metric-label-input flex-1 bg-transparent text-sm outline-none text-gray-700" value="${escapeHtml(m.label)}" placeholder="指标名称" data-idx="${idx}">
+      <input type="text" class="metric-unit-input w-14 bg-white rounded-lg text-xs text-center py-1 outline-none border border-gray-200 text-gray-500" value="${escapeHtml(m.unit)}" placeholder="单位" data-idx="${idx}">
+      <button class="metric-remove-btn w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition flex-shrink-0" data-idx="${idx}">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+  `).join('') + `
+    <p class="text-[10px] text-gray-300">编辑后点击"保存"生效。打卡时将提示录入这些指标。</p>
+  `;
+
+  // 绑定事件
+  container.querySelectorAll('.metric-remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      const cfg = getMetricConfig();
+      const itemCfg = cfg[editingCheckinItemId];
+      if (itemCfg) { itemCfg.metrics.splice(idx, 1); saveMetricConfig(cfg); }
+      renderMetricConfig(editingCheckinItemId);
+    });
+  });
+}
+
+function saveMetricConfigFromUI() {
+  const container = document.getElementById('metricConfigList');
+  if (!container || !editingCheckinItemId) return;
+  const labels = container.querySelectorAll('.metric-label-input');
+  const units = container.querySelectorAll('.metric-unit-input');
+  const metrics = [];
+  labels.forEach((l, i) => {
+    const label = l.value.trim();
+    const unit = units[i] ? units[i].value.trim() : '';
+    if (label) metrics.push({ key: `metric_${Date.now()}_${i}`, label, unit });
+  });
+  const cfg = getMetricConfig();
+  cfg[editingCheckinItemId] = { metrics };
+  saveMetricConfig(cfg);
+}
+
+// 添加指标
+document.getElementById('addMetricConfigBtn').addEventListener('click', () => {
+  const cfg = getMetricConfig();
+  const itemCfg = ensureMetricConfig(editingCheckinItemId);
+  itemCfg.metrics.push({ key: `metric_${Date.now()}_${itemCfg.metrics.length}`, label: '', unit: '' });
+  saveMetricConfig(cfg);
+  renderMetricConfig(editingCheckinItemId);
+});
 
 function addCheckinItem() {
   const name = prompt('请输入新打卡项名称：');
@@ -1299,6 +1487,7 @@ function renderSummary() {
   if (summaryPeriod === 'week') renderWeekChart();
   else if (summaryPeriod === 'month') renderMonthCalendar();
   else renderYearChart();
+  renderMetricTrend();
 }
 
 function renderWeekChart() {
@@ -1453,6 +1642,7 @@ function openBackfillPanel(dateStr) {
       const key = el.dataset.key;
       const cur = getCheckins();
       if (!cur[date]) cur[date] = {};
+      const wasChecked = !!cur[date][key];
       cur[date][key] = !cur[date][key];
       saveCheckins(cur);
       // 刷新面板内容
@@ -1461,6 +1651,10 @@ function openBackfillPanel(dateStr) {
       renderCheckin();
       renderSummary();
       if (currentPage === 'home') renderHome();
+      // 如果从未打卡变为已打卡，且该打卡项配置了指标，弹出指标录入
+      if (!wasChecked && cur[date][key]) {
+        openMetricEntry(key, date);
+      }
     });
   });
 
@@ -1522,6 +1716,136 @@ function renderYearChart() {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: true, position: 'top', labels: { boxWidth:10, boxHeight:10, padding:10, font:{size:10}, usePointStyle:true } } },
       scales: { y: { beginAtZero:true, ticks:{font:{size:11}}, grid:{color:'#f1f5f9'}, title:{display:true,text:'完成次数',font:{size:10}} }, x: { ticks:{font:{size:10}}, grid:{display:false} } },
+      animation: { duration: 500 }
+    }
+  });
+}
+
+// ==================== 指标趋势折线图 ====================
+function renderMetricTrend() {
+  const section = document.getElementById('metricTrendSection');
+  const empty = document.getElementById('metricTrendEmpty');
+  const content = document.getElementById('metricTrendContent');
+  const tabs = document.getElementById('metricTabs');
+  if (!section || !empty || !content || !tabs) return;
+
+  // 收集所有有指标数据的打卡项
+  const cfg = getMetricConfig();
+  const metrics = getMetrics();
+  const items = getCheckinItems();
+
+  // 找到所有有配置且有数据的打卡项
+  const availableItems = [];
+  for (const item of items) {
+    const itemCfg = cfg[item.id];
+    if (!itemCfg || !itemCfg.metrics || itemCfg.metrics.length === 0) continue;
+    // 检查是否有任何指标数据
+    let hasData = false;
+    for (const dateKey of Object.keys(metrics)) {
+      const dayMetrics = metrics[dateKey];
+      if (dayMetrics[item.id] && Object.keys(dayMetrics[item.id]).length > 0) {
+        hasData = true;
+        break;
+      }
+    }
+    if (hasData || itemCfg.metrics.length > 0) {
+      availableItems.push(item);
+    }
+  }
+
+  if (availableItems.length === 0) {
+    empty.style.display = 'block';
+    content.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  content.style.display = 'block';
+
+  // 默认选中第一个
+  if (!metricTrendItem || !availableItems.find(a => a.id === metricTrendItem)) {
+    metricTrendItem = availableItems[0].id;
+  }
+
+  // 渲染 tab
+  tabs.innerHTML = availableItems.map(item => {
+    const active = metricTrendItem === item.id;
+    return `<button class="metric-trend-tab flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition ${active ? 'text-white shadow-sm' : 'bg-gray-100 text-gray-500'}" style="${active ? 'background:'+item.color : ''}" data-item="${item.id}">${item.icon} ${escapeHtml(item.title)}</button>`;
+  }).join('');
+
+  tabs.querySelectorAll('.metric-trend-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      metricTrendItem = tab.dataset.item;
+      renderMetricTrend();
+    });
+  });
+
+  // 获取当前选中项的指标数据
+  const currentItem = availableItems.find(a => a.id === metricTrendItem);
+  if (!currentItem) return;
+  const itemCfg = cfg[metricTrendItem];
+  if (!itemCfg) return;
+
+  // 收集所有日期数据，按时间排序
+  const dateData = [];
+  for (const dateKey of Object.keys(metrics)) {
+    const dayMetrics = metrics[dateKey];
+    if (dayMetrics[metricTrendItem]) {
+      dateData.push({ date: dateKey, values: dayMetrics[metricTrendItem] });
+    }
+  }
+  dateData.sort((a, b) => a.date.localeCompare(b.date));
+
+  if (dateData.length === 0) {
+    empty.style.display = 'block';
+    content.style.display = 'none';
+    empty.innerHTML = '<p>暂无指标数据，打卡时录入即可在此查看趋势</p>';
+    return;
+  }
+
+  // 渲染折线图
+  const ctx = document.getElementById('metricLineChart');
+  if (!ctx) return;
+  if (metricLineChart) metricLineChart.destroy();
+
+  const labels = dateData.map(d => {
+    const p = d.date.split('-');
+    return `${parseInt(p[1])}/${parseInt(p[2])}`;
+  });
+
+  const lineColors = ['#14b8a6', '#f97316', '#6366f1', '#ec4899', '#22c55e', '#eab308'];
+  const datasets = itemCfg.metrics.map((m, idx) => ({
+    label: m.label + (m.unit ? ` (${m.unit})` : ''),
+    data: dateData.map(d => d.values[m.key] ?? null),
+    borderColor: lineColors[idx % lineColors.length],
+    backgroundColor: lineColors[idx % lineColors.length] + '20',
+    borderWidth: 2.5,
+    pointRadius: 3,
+    pointHoverRadius: 5,
+    tension: 0.35,
+    fill: false,
+    spanGaps: false,
+  }));
+
+  metricLineChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, boxHeight: 2, padding: 12, font: { size: 10 }, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y : '无数据'}`
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: false, ticks: { font: { size: 10 } }, grid: { color: '#f1f5f9' } },
+        x: { ticks: { font: { size: 9 }, maxRotation: 45 }, grid: { display: false } }
+      },
       animation: { duration: 500 }
     }
   });
