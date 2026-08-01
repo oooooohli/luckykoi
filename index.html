@@ -1351,12 +1351,30 @@ function toggleCheckin(key, dateStr) {
   const wasChecked = !!all[date][key];
   all[date][key] = !all[date][key];
   saveCheckins(all);
+  // 自动同步父级状态：如果操作的是子项，检查父级是否应标记完成
+  syncParentStatus(key, date);
   renderCheckin();
   if (currentPage === 'home') renderHome();
   // 如果从未打卡变为已打卡，且该打卡项配置了指标，弹出指标录入
   if (!wasChecked && all[date][key]) {
     openMetricEntry(key, date);
   }
+}
+
+// 当子项状态变化时，自动同步父级打卡状态
+function syncParentStatus(childKey, date) {
+  const items = getCheckinItems();
+  const child = items.find(i => i.id === childKey);
+  if (!child || !child.parentId) return;
+  const parentId = child.parentId;
+  const siblings = items.filter(i => i.parentId === parentId);
+  if (siblings.length === 0) return;
+  const all = getCheckins();
+  if (!all[date]) all[date] = {};
+  // 所有子项都完成 → 父级标记完成；否则取消父级
+  const allDone = siblings.every(s => all[date][s.id]);
+  all[date][parentId] = allDone;
+  saveCheckins(all);
 }
 
 // ========== 指标录入面板 ==========
@@ -1943,6 +1961,8 @@ function openBackfillPanel(dateStr) {
       const wasChecked = !!cur[date][key];
       cur[date][key] = !cur[date][key];
       saveCheckins(cur);
+      // 自动同步父级状态
+      syncParentStatus(key, date);
       // 刷新面板内容
       openBackfillPanel(date);
       // 刷新底层的月视图和打卡卡片
