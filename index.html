@@ -1416,7 +1416,7 @@ function openMetricEntry(itemId, dateStr) {
           <div class="flex items-center gap-3">
             <label class="text-sm text-gray-600 w-16 flex-shrink-0">${escapeHtml(m.label)}</label>
             <div class="flex-1 flex items-center gap-2">
-              <input type="number" step="0.1" class="metric-value-input flex-1 px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition" placeholder="输入${escapeHtml(m.label)}" value="${existingRecord[m.key] || ''}" data-key="${m.key}">
+              <input type="text" class="metric-value-input flex-1 px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition" placeholder="输入${escapeHtml(m.label)}" value="${existingRecord[m.key] || ''}" data-key="${m.key}">
               <span class="text-xs text-gray-400 w-8">${escapeHtml(m.unit)}</span>
             </div>
           </div>
@@ -1445,8 +1445,11 @@ function openMetricEntry(itemId, dateStr) {
   document.getElementById('saveMetricBtn').addEventListener('click', () => {
     const values = {};
     overlay.querySelectorAll('.metric-value-input').forEach(input => {
-      const v = parseFloat(input.value);
-      if (!isNaN(v)) values[input.dataset.key] = v;
+      const raw = input.value.trim();
+      if (!raw) return;
+      // 如果是数字就存数字，否则存字符串
+      const num = parseFloat(raw);
+      values[input.dataset.key] = isNaN(num) ? raw : num;
     });
     const allMetrics = getMetrics();
     if (!allMetrics[dateStr]) allMetrics[dateStr] = {};
