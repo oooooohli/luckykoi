@@ -2690,13 +2690,16 @@ function bindEvents() {
 // 启动
 document.addEventListener('DOMContentLoaded', init);
 
-// PWA Service Worker — 注销旧版本，注册新版本
+// PWA Service Worker — 强制清除旧缓存，注册新版本
 if ('serviceWorker' in navigator) {
-  // 先注销所有旧 SW
+  // 清除所有浏览器缓存
+  if ('caches' in window) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+  }
+  // 注销所有旧 SW
   navigator.serviceWorker.getRegistrations().then(regs => {
     regs.forEach(reg => reg.unregister());
   }).then(() => {
-    // 等旧 SW 清理完毕后再注册新的
     setTimeout(() => {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }, 500);
