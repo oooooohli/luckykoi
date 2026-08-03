@@ -1205,10 +1205,10 @@ function renderCheckin() {
   cards.innerHTML = topItems.map(item => {
     const children = getChildren(item.id);
     const childDone = children.filter(c => today[c.id]).length;
-    const allChildDone = children.length > 0 && childDone === children.length;
+    const anyChildDone = childDone > 0;
     const hasChildren = children.length > 0;
-    // 父级自身是否勾选（如果无子项则看自身，有子项则看全部子项）
-    const parentChecked = hasChildren ? allChildDone : today[item.id];
+    // 父级自身是否勾选：有子项时只要任一子项完成即算完成
+    const parentChecked = hasChildren ? anyChildDone : today[item.id];
 
     return `
     <div class="checkin-group" data-id="${item.id}">
@@ -1371,9 +1371,9 @@ function syncParentStatus(childKey, date) {
   if (siblings.length === 0) return;
   const all = getCheckins();
   if (!all[date]) all[date] = {};
-  // 所有子项都完成 → 父级标记完成；否则取消父级
-  const allDone = siblings.every(s => all[date][s.id]);
-  all[date][parentId] = allDone;
+  // 任意一个子项完成 → 父级标记完成；所有子项都未完成 → 取消父级
+  const anyDone = siblings.some(s => all[date][s.id]);
+  all[date][parentId] = anyDone;
   saveCheckins(all);
 }
 
