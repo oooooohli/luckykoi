@@ -2177,6 +2177,10 @@ function renderMetricTrend() {
 
 // ==================== To-do List ====================
 function renderTodo() {
+  const today = todayStr();
+  // 自动延续：如果今天是新的一天，把之前未完成的事项复制到今天
+  carryOverTodos(today);
+  
   const todos = getTodos();
   const dateTodos = todos.filter(t => t.date === todoViewDate);
   const pending = dateTodos.filter(t => !t.done);
@@ -2240,6 +2244,24 @@ function deleteTodo(id) {
   if (!confirm('确定删除这条待办吗？')) return;
   saveTodos(getTodos().filter(t => t.id !== id));
   renderTodo();
+}
+
+// 把之前日期未完成的事项延续到今天
+function carryOverTodos(today) {
+  const todos = getTodos();
+  const todayIds = new Set(todos.filter(t => t.date === today).map(t => t.text));
+  // 找到今天之前所有未完成的事项
+  const pending = todos.filter(t => t.date < today && !t.done && !todayIds.has(t.text));
+  if (pending.length === 0) return;
+  // 复制到今天的日期，去重（同文本的只复制一次）
+  const copied = new Set();
+  pending.forEach(t => {
+    if (!copied.has(t.text)) {
+      copied.add(t.text);
+      todos.push({ id: 'todo_' + Date.now() + '_' + Math.random().toString(36).slice(2,6), text: t.text, date: today, done: false });
+    }
+  });
+  saveTodos(todos);
 }
 
 // ==================== 阅读记录 ====================
