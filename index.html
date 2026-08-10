@@ -333,6 +333,36 @@
       </div>
     </div>
 
+    <!-- ===== 中级经济师学习板块 ===== -->
+    <div class="page-content" id="page-study">
+      <!-- 倒计时卡片 -->
+      <div id="examCountdown" class="bg-gradient-to-r from-teal-500 to-cyan-600 rounded-2xl shadow-lg p-5 mb-4 text-white text-center">
+        <div class="text-sm opacity-80 mb-1">📅 2026年11月8日 · 中级经济师考试</div>
+        <div class="text-4xl font-extrabold tracking-wider" id="countdownDays">90</div>
+        <div class="text-xs opacity-70 mt-1">天</div>
+      </div>
+
+      <!-- 每日学习打卡 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+        <h3 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><span>📖</span> 每日学习打卡</h3>
+        <!-- 科目Tab -->
+        <div class="flex gap-2 mb-4" id="studyCheckinTabs"></div>
+        <!-- 章节打卡列表 -->
+        <div id="studyCheckinList" class="space-y-1.5"></div>
+      </div>
+
+      <!-- 刷题正确率 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+        <h3 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><span>📊</span> 刷题正确率</h3>
+        <!-- 科目Tab -->
+        <div class="flex gap-2 mb-4" id="studyQuizTabs"></div>
+        <!-- 柱状图 -->
+        <div class="relative" style="height:260px"><canvas id="quizChart"></canvas></div>
+        <!-- 各章节数据输入 -->
+        <div id="quizDataList" class="mt-3 space-y-2"></div>
+      </div>
+    </div>
+
     <!-- ===== 自定义板块容器 ===== -->
     <div class="page-content" id="page-custom-template">
       <div id="customPageContent" class="space-y-3">
@@ -532,10 +562,56 @@ const DEFAULT_CHECKIN_ITEMS = [
 
 const COLOR_OPTIONS = ['#22c55e','#6366f1','#f97316','#a855f7','#ec4899','#14b8a6','#eab308','#ef4444','#3b82f6','#84cc16'];
 
-const DEFAULT_SECTIONS = [
+// ==================== 中级经济师学习数据 ====================
+const STORAGE_STUDY = 'luckyKoi.study';
+const STORAGE_QUIZ = 'luckyKoi.quiz';
+const EXAM_DATE = new Date(2026, 10, 8); // 2026年11月8日
+
+// 科目章节预设
+const EXAM_SUBJECTS = [
+  {
+    id: 'subject_economics',
+    title: '经济基础知识',
+    chapters: [
+      { id: 'ch_econ_1', name: '第一章 经济学基础' },
+      { id: 'ch_econ_2', name: '第二章 财政' },
+      { id: 'ch_econ_3', name: '第三章 货币与金融' },
+      { id: 'ch_econ_4', name: '第四章 统计' },
+      { id: 'ch_econ_5', name: '第五章 会计' },
+      { id: 'ch_econ_6', name: '第六章 法律' },
+    ]
+  },
+  {
+    id: 'subject_management',
+    title: '工商管理专业知识与实务',
+    chapters: [
+      { id: 'ch_mgmt_1', name: '第一章 企业战略与经营决策' },
+      { id: 'ch_mgmt_2', name: '第二章 公司法人治理结构' },
+      { id: 'ch_mgmt_3', name: '第三章 市场营销与品牌管理' },
+      { id: 'ch_mgmt_4', name: '第四章 生产管理与控制' },
+      { id: 'ch_mgmt_5', name: '第五章 物流管理' },
+      { id: 'ch_mgmt_6', name: '第六章 技术创新管理' },
+      { id: 'ch_mgmt_7', name: '第七章 人力资源管理' },
+      { id: 'ch_mgmt_8', name: '第八章 财务管理' },
+      { id: 'ch_mgmt_9', name: '第九章 企业投融资决策及重组' },
+      { id: 'ch_mgmt_10', name: '第十章 电子商务' },
+      { id: 'ch_mgmt_11', name: '第十一章 国际商务运营' },
+    ]
+  }
+];
+
+function getStudy() { try { return JSON.parse(localStorage.getItem(STORAGE_STUDY)||'{}'); } catch(e) { return {}; } }
+function saveStudy(d) { localStorage.setItem(STORAGE_STUDY, JSON.stringify(d)); }
+function getQuiz() { try { return JSON.parse(localStorage.getItem(STORAGE_QUIZ)||'{}'); } catch(e) { return {}; } }
+function saveQuiz(d) { localStorage.setItem(STORAGE_QUIZ, JSON.stringify(d)); }
+
+let studyActiveSubject = 'subject_economics';   // 打卡当前科目
+let quizActiveSubject = 'subject_economics';     // 刷题当前科目
+let quizChart = null;const DEFAULT_SECTIONS = [
   { id:'checkin', title:'每日打卡', icon:'📋', builtin:true },
   { id:'todo',    title:'To-do List', icon:'✅', builtin:true },
   { id:'books',   title:'阅读记录', icon:'📚', builtin:true },
+  { id:'study',   title:'中级经济师', icon:'🎓', builtin:true },
 ];
 
 const ICON_POOL = ['📋','✅','📖','✏️','💼','🏠','🎯','💡','⭐','🔥','❤️','🎵','📷','🌍','🍎','🛒','✈️','🎮','📅','💰','🧘','📚','🎨','🔧'];
@@ -802,6 +878,7 @@ function navigateTo(pageId, title) {
   if (pageId === 'checkin') renderCheckin();
   if (pageId === 'todo') renderTodo();
   if (pageId === 'books') renderBooks();
+  if (pageId === 'study') renderStudy();
   if (pageId === 'home') renderHome();
   if (pageId.startsWith('custom_')) renderCustomPage(pageId);
 
@@ -2262,6 +2339,151 @@ function carryOverTodos(today) {
     }
   });
   saveTodos(todos);
+}
+
+// ==================== 中级经济师学习 ====================
+function renderStudy() {
+  renderCountdown();
+  renderStudyCheckin();
+  renderQuizStats();
+}
+
+// 考试倒计时
+function renderCountdown() {
+  const now = new Date();
+  const diff = EXAM_DATE - now;
+  const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  document.getElementById('countdownDays').textContent = days;
+}
+
+// 学习打卡
+function renderStudyCheckin() {
+  const study = getStudy();
+  const today = study[todayStr()] || {};
+
+  // 渲染科目 Tab
+  const tabContainer = document.getElementById('studyCheckinTabs');
+  tabContainer.innerHTML = EXAM_SUBJECTS.map(s => `
+    <button class="study-checkin-tab flex-1 py-2 rounded-xl text-xs font-semibold transition ${studyActiveSubject === s.id ? 'text-white' : 'bg-gray-100 text-gray-500'}" style="${studyActiveSubject === s.id ? 'background:linear-gradient(135deg,#14b8a6,#0d9488)' : ''}" data-subject="${s.id}">${s.title}</button>
+  `).join('');
+
+  tabContainer.querySelectorAll('.study-checkin-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      studyActiveSubject = btn.dataset.subject;
+      renderStudyCheckin();
+    });
+  });
+
+  // 渲染章节打卡列表
+  const subject = EXAM_SUBJECTS.find(s => s.id === studyActiveSubject);
+  if (!subject) return;
+  const listEl = document.getElementById('studyCheckinList');
+  const doneCount = subject.chapters.filter(ch => today[ch.id]).length;
+  listEl.innerHTML = `
+    <div class="text-xs text-gray-400 mb-2">${doneCount}/${subject.chapters.length} 章已完成</div>
+    ${subject.chapters.map(ch => `
+      <div class="study-chapter-item flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition border-2 ${today[ch.id] ? 'border-teal-300 bg-teal-50' : 'border-gray-100 bg-gray-50'}" data-chapter="${ch.id}">
+        <span class="text-sm text-gray-700">${ch.name}</span>
+        <div class="w-6 h-6 rounded-full flex items-center justify-center ${today[ch.id] ? '' : 'border-2 border-gray-300'}" style="${today[ch.id] ? 'background:#14b8a6' : ''}">
+          ${today[ch.id] ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
+        </div>
+      </div>
+    `).join('')}
+  `;
+
+  // 绑定点击
+  listEl.querySelectorAll('.study-chapter-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const chId = el.dataset.chapter;
+      const study = getStudy();
+      const today = todayStr();
+      if (!study[today]) study[today] = {};
+      study[today][chId] = !study[today][chId];
+      saveStudy(study);
+      renderStudyCheckin();
+    });
+  });
+}
+
+// 刷题统计
+function renderQuizStats() {
+  // 渲染科目 Tab
+  const tabContainer = document.getElementById('studyQuizTabs');
+  tabContainer.innerHTML = EXAM_SUBJECTS.map(s => `
+    <button class="study-quiz-tab flex-1 py-2 rounded-xl text-xs font-semibold transition ${quizActiveSubject === s.id ? 'text-white' : 'bg-gray-100 text-gray-500'}" style="${quizActiveSubject === s.id ? 'background:linear-gradient(135deg,#14b8a6,#0d9488)' : ''}" data-subject="${s.id}">${s.title}</button>
+  `).join('');
+
+  tabContainer.querySelectorAll('.study-quiz-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      quizActiveSubject = btn.dataset.subject;
+      renderQuizStats();
+    });
+  });
+
+  const subject = EXAM_SUBJECTS.find(s => s.id === quizActiveSubject);
+  if (!subject) return;
+  const quiz = getQuiz();
+
+  // 渲染柱状图
+  const ctx = document.getElementById('quizChart');
+  if (ctx) {
+    if (quizChart) quizChart.destroy();
+    const labels = subject.chapters.map(ch => ch.name.replace(/^第.+章\s*/, ''));
+    const rates = subject.chapters.map(ch => {
+      const d = quiz[ch.id];
+      return d && d.total > 0 ? Math.round((d.correct / d.total) * 100) : null;
+    });
+
+    quizChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: '正确率 (%)',
+          data: rates,
+          backgroundColor: rates.map(r => r === null ? '#e5e7eb' : r >= 70 ? '#14b8a6' : r >= 50 ? '#f59e0b' : '#ef4444'),
+          borderRadius: 6,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y !== null ? `正确率: ${ctx.parsed.y}%` : '暂无数据' } } },
+        scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', font: { size: 10 } }, grid: { color: '#f1f5f9' } }, x: { ticks: { font: { size: 9 }, maxRotation: 45 }, grid: { display: false } } },
+        animation: { duration: 400 }
+      }
+    });
+  }
+
+  // 渲染数据输入
+  const dataList = document.getElementById('quizDataList');
+  dataList.innerHTML = subject.chapters.map(ch => {
+    const d = quiz[ch.id] || { correct: 0, total: 0 };
+    const rate = d.total > 0 ? Math.round((d.correct / d.total) * 100) : 0;
+    return `
+      <div class="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 text-xs">
+        <span class="flex-1 text-gray-600 truncate">${ch.name.replace(/^第.+章\s*/, '')}</span>
+        <input type="number" class="quiz-correct w-12 text-center py-1 rounded-lg border border-gray-200 outline-none focus:border-teal-400" value="${d.correct || ''}" placeholder="对" data-chapter="${ch.id}" data-field="correct">
+        <span class="text-gray-300">/</span>
+        <input type="number" class="quiz-total w-12 text-center py-1 rounded-lg border border-gray-200 outline-none focus:border-teal-400" value="${d.total || ''}" placeholder="总" data-chapter="${ch.id}" data-field="total">
+        <span class="w-10 text-right font-semibold ${rate >= 70 ? 'text-teal-600' : rate >= 50 ? 'text-orange-500' : 'text-red-500'}">${rate}%</span>
+      </div>
+    `;
+  }).join('');
+
+  // 绑定输入事件
+  dataList.querySelectorAll('.quiz-correct, .quiz-total').forEach(input => {
+    input.addEventListener('change', () => {
+      const chId = input.dataset.chapter;
+      const field = input.dataset.field;
+      const val = parseInt(input.value) || 0;
+      const quiz = getQuiz();
+      if (!quiz[chId]) quiz[chId] = { correct: 0, total: 0 };
+      quiz[chId][field] = val;
+      saveQuiz(quiz);
+      renderQuizStats();
+    });
+  });
 }
 
 // ==================== 阅读记录 ====================
