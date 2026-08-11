@@ -2323,19 +2323,18 @@ function deleteTodo(id) {
   renderTodo();
 }
 
-// 把之前日期的事项延续到今天（未完成和已完成的都复制）
+// 把之前日期未完成的事项延续到今天
 function carryOverTodos(today) {
   const todos = getTodos();
   const todayTexts = new Set(todos.filter(t => t.date === today).map(t => t.text));
-  // 找到今天之前所有事项（未完成和已完成）
-  const before = todos.filter(t => t.date < today && !todayTexts.has(t.text));
-  if (before.length === 0) return;
-  // 去重复制
+  // 只延续未完成的
+  const pending = todos.filter(t => t.date < today && !t.done && !todayTexts.has(t.text));
+  if (pending.length === 0) return;
   const copied = new Set();
-  before.forEach(t => {
+  pending.forEach(t => {
     if (!copied.has(t.text)) {
       copied.add(t.text);
-      todos.push({ id: 'todo_' + Date.now() + '_' + Math.random().toString(36).slice(2,6), text: t.text, date: today, done: t.done });
+      todos.push({ id: 'todo_' + Date.now() + '_' + Math.random().toString(36).slice(2,6), text: t.text, date: today, done: false });
     }
   });
   saveTodos(todos);
