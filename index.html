@@ -567,8 +567,8 @@ const STORAGE_STUDY = 'luckyKoi.study';
 const STORAGE_QUIZ = 'luckyKoi.quiz';
 const EXAM_DATE = new Date(2026, 10, 8); // 2026年11月8日
 
-// 科目章节预设
-const EXAM_SUBJECTS = [
+// 科目章节默认预设（可编辑，存储在 localStorage）
+const DEFAULT_SUBJECTS = [
   {
     id: 'subject_economics',
     title: '经济基础知识',
@@ -599,6 +599,17 @@ const EXAM_SUBJECTS = [
     ]
   }
 ];
+const STORAGE_SUBJECTS = 'luckyKoi.subjects';
+
+function getSubjects() {
+  try {
+    const raw = localStorage.getItem(STORAGE_SUBJECTS);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  saveSubjects(DEFAULT_SUBJECTS);
+  return JSON.parse(JSON.stringify(DEFAULT_SUBJECTS));
+}
+function saveSubjects(d) { localStorage.setItem(STORAGE_SUBJECTS, JSON.stringify(d)); }
 
 function getStudy() { try { return JSON.parse(localStorage.getItem(STORAGE_STUDY)||'{}'); } catch(e) { return {}; } }
 function saveStudy(d) { localStorage.setItem(STORAGE_STUDY, JSON.stringify(d)); }
@@ -2362,7 +2373,7 @@ function renderStudyCheckin() {
 
   // 渲染科目 Tab
   const tabContainer = document.getElementById('studyCheckinTabs');
-  tabContainer.innerHTML = EXAM_SUBJECTS.map(s => `
+  tabContainer.innerHTML = getSubjects().map(s => `
     <button class="study-checkin-tab flex-1 py-2 rounded-xl text-xs font-semibold transition ${studyActiveSubject === s.id ? 'text-white' : 'bg-gray-100 text-gray-500'}" style="${studyActiveSubject === s.id ? 'background:linear-gradient(135deg,#14b8a6,#0d9488)' : ''}" data-subject="${s.id}">${s.title}</button>
   `).join('');
 
@@ -2374,24 +2385,38 @@ function renderStudyCheckin() {
   });
 
   // 渲染章节打卡列表
-  const subject = EXAM_SUBJECTS.find(s => s.id === studyActiveSubject);
+  const subject = getSubjects().find(s => s.id === studyActiveSubject);
   if (!subject) return;
   const listEl = document.getElementById('studyCheckinList');
   const doneCount = subject.chapters.filter(ch => today[ch.id]).length;
   listEl.innerHTML = `
-    <div class="text-xs text-gray-400 mb-2">${doneCount}/${subject.chapters.length} 章已完成</div>
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs text-gray-400">${doneCount}/${subject.chapters.length} 章已完成</span>
+      <button id="addChapterBtn" class="text-xs text-teal-500 font-medium hover:text-teal-600 flex items-center gap-0.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+        添加章节
+      </button>
+    </div>
     ${subject.chapters.map(ch => `
-      <div class="study-chapter-item flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition border-2 ${today[ch.id] ? 'border-teal-300 bg-teal-50' : 'border-gray-100 bg-gray-50'}" data-chapter="${ch.id}">
-        <span class="text-sm text-gray-700">${ch.name}</span>
-        <div class="w-6 h-6 rounded-full flex items-center justify-center ${today[ch.id] ? '' : 'border-2 border-gray-300'}" style="${today[ch.id] ? 'background:#14b8a6' : ''}">
-          ${today[ch.id] ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
+      <div class="study-chapter-item flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition border-2 ${today[ch.id] ? 'border-teal-300 bg-teal-50' : 'border-gray-100 bg-gray-50'}" data-chapter="${ch.id}">
+        <div class="flex-1 flex items-center gap-2 chapter-main" data-chapter="${ch.id}">
+          <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${today[ch.id] ? '' : 'border-2 border-gray-300'}" style="${today[ch.id] ? 'background:#14b8a6' : ''}">
+            ${today[ch.id] ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
+          </div>
+          <span class="text-sm text-gray-700">${escapeHtml(ch.name)}</span>
         </div>
+        <button class="chapter-edit-btn w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-teal-500 transition flex-shrink-0" data-chapter="${ch.id}">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        </button>
+        <button class="chapter-del-btn w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 transition flex-shrink-0" data-chapter="${ch.id}">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
       </div>
     `).join('')}
   `;
 
-  // 绑定点击
-  listEl.querySelectorAll('.study-chapter-item').forEach(el => {
+  // 绑定打卡点击（点击左侧主区域切换状态）
+  listEl.querySelectorAll('.chapter-main').forEach(el => {
     el.addEventListener('click', () => {
       const chId = el.dataset.chapter;
       const study = getStudy();
@@ -2402,13 +2427,63 @@ function renderStudyCheckin() {
       renderStudyCheckin();
     });
   });
+
+  // 绑定编辑章节
+  listEl.querySelectorAll('.chapter-edit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const chId = btn.dataset.chapter;
+      const subjects = getSubjects();
+      const subj = subjects.find(s => s.id === studyActiveSubject);
+      const ch = subj.chapters.find(c => c.id === chId);
+      if (!ch) return;
+      const newName = prompt('修改章节名称：', ch.name);
+      if (newName && newName.trim()) {
+        ch.name = newName.trim();
+        saveSubjects(subjects);
+        renderStudyCheckin();
+        renderQuizStats();
+      }
+    });
+  });
+
+  // 绑定删除章节（不删除已打卡数据）
+  listEl.querySelectorAll('.chapter-del-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const chId = btn.dataset.chapter;
+      if (!confirm('确定删除此章节吗？已完成的打卡记录会保留。')) return;
+      const subjects = getSubjects();
+      const subj = subjects.find(s => s.id === studyActiveSubject);
+      subj.chapters = subj.chapters.filter(c => c.id !== chId);
+      saveSubjects(subjects);
+      renderStudyCheckin();
+      renderQuizStats();
+    });
+  });
+
+  // 绑定添加章节
+  const addBtn = document.getElementById('addChapterBtn');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      const name = prompt('请输入章节名称：');
+      if (!name || !name.trim()) return;
+      const subjects = getSubjects();
+      const subj = subjects.find(s => s.id === studyActiveSubject);
+      const newId = 'ch_' + studyActiveSubject.replace('subject_','').slice(0,4) + '_' + Date.now();
+      subj.chapters.push({ id: newId, name: name.trim() });
+      saveSubjects(subjects);
+      renderStudyCheckin();
+      renderQuizStats();
+    });
+  }
 }
 
 // 刷题统计
 function renderQuizStats() {
   // 渲染科目 Tab
   const tabContainer = document.getElementById('studyQuizTabs');
-  tabContainer.innerHTML = EXAM_SUBJECTS.map(s => `
+  tabContainer.innerHTML = getSubjects().map(s => `
     <button class="study-quiz-tab flex-1 py-2 rounded-xl text-xs font-semibold transition ${quizActiveSubject === s.id ? 'text-white' : 'bg-gray-100 text-gray-500'}" style="${quizActiveSubject === s.id ? 'background:linear-gradient(135deg,#14b8a6,#0d9488)' : ''}" data-subject="${s.id}">${s.title}</button>
   `).join('');
 
@@ -2419,7 +2494,7 @@ function renderQuizStats() {
     });
   });
 
-  const subject = EXAM_SUBJECTS.find(s => s.id === quizActiveSubject);
+  const subject = getSubjects().find(s => s.id === quizActiveSubject);
   if (!subject) return;
   const quiz = getQuiz();
 
