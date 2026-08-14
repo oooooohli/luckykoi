@@ -157,7 +157,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.2</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.3</button>
       </div>
     </div>
   </header>
@@ -628,6 +628,28 @@ function saveSubjects(d) { localStorage.setItem(STORAGE_SUBJECTS, JSON.stringify
 
 function getStudy() { try { return JSON.parse(localStorage.getItem(STORAGE_STUDY)||'{}'); } catch(e) { return {}; } }
 function saveStudy(d) { localStorage.setItem(STORAGE_STUDY, JSON.stringify(d)); }
+
+// 迁移：将旧版按日打卡记录合并为永久完成状态（一次完成永久记录）
+function migrateStudyCompletions() {
+  try {
+    const study = getStudy();
+    if (!study.completedChapters) study.completedChapters = {};
+    let changed = false;
+    // 从历史每日记录中，把出现过的章节标记为永久完成
+    Object.keys(study).forEach(date => {
+      if (date === 'completedChapters') return;
+      const day = study[date];
+      if (!day || typeof day !== 'object') return;
+      Object.keys(day).forEach(chId => {
+        if (day[chId] && !study.completedChapters[chId]) {
+          study.completedChapters[chId] = true;
+          changed = true;
+        }
+      });
+    });
+    if (changed) saveStudy(study);
+  } catch(e) { console.error('migrateStudyCompletions:', e); }
+}
 function getQuiz() { try { return JSON.parse(localStorage.getItem(STORAGE_QUIZ)||'{}'); } catch(e) { return {}; } }
 function saveQuiz(d) { localStorage.setItem(STORAGE_QUIZ, JSON.stringify(d)); }
 
@@ -828,6 +850,7 @@ function init() {
   try {
     updateHeaderDate();
     getCheckinItems(); // 触发数据迁移
+    migrateStudyCompletions(); // 学习章节：合并为永久完成状态
     renderDrawer();
     renderHome();
     renderCheckin();
@@ -2388,10 +2411,10 @@ function renderCountdown() {
   document.getElementById('countdownDays').textContent = days;
 }
 
-// 学习打卡
+// 学习打卡（章节完成后永久记录，不可取消）
 function renderStudyCheckin() {
   const study = getStudy();
-  const today = study[todayStr()] || {};
+  const completed = study.completedChapters || {};
 
   // 渲染科目 Tab
   const tabContainer = document.getElementById('studyCheckinTabs');
@@ -2410,7 +2433,7 @@ function renderStudyCheckin() {
   const subject = getSubjects().find(s => s.id === studyActiveSubject);
   if (!subject) return;
   const listEl = document.getElementById('studyCheckinList');
-  const doneCount = subject.chapters.filter(ch => today[ch.id]).length;
+  const doneCount = subject.chapters.filter(ch => completed[ch.id]).length;
   listEl.innerHTML = `
     <div class="flex items-center justify-between mb-2">
       <span class="text-xs text-gray-400">${doneCount}/${subject.chapters.length} 章已完成</span>
@@ -2420,12 +2443,12 @@ function renderStudyCheckin() {
       </button>
     </div>
     ${subject.chapters.map(ch => `
-      <div class="study-chapter-item flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition border-2 ${today[ch.id] ? 'border-teal-300 bg-teal-50' : 'border-gray-100 bg-gray-50'}" data-chapter="${ch.id}">
+      <div class="study-chapter-item flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition border-2 ${completed[ch.id] ? 'border-teal-300 bg-teal-50' : 'border-gray-100 bg-gray-50'}" data-chapter="${ch.id}">
         <div class="flex-1 flex items-center gap-2 chapter-main" data-chapter="${ch.id}">
-          <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${today[ch.id] ? '' : 'border-2 border-gray-300'}" style="${today[ch.id] ? 'background:#14b8a6' : ''}">
-            ${today[ch.id] ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
+          <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${completed[ch.id] ? '' : 'border-2 border-gray-300'}" style="${completed[ch.id] ? 'background:#14b8a6' : ''}">
+            ${completed[ch.id] ? '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
           </div>
-          <span class="text-sm text-gray-700">${escapeHtml(ch.name)}</span>
+          <span class="text-sm ${completed[ch.id] ? 'text-gray-400 line-through' : 'text-gray-700'}">${escapeHtml(ch.name)}</span>
         </div>
         <button class="chapter-edit-btn w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-teal-500 transition flex-shrink-0" data-chapter="${ch.id}">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
@@ -2437,16 +2460,23 @@ function renderStudyCheckin() {
     `).join('')}
   `;
 
-  // 绑定打卡点击（点击左侧主区域切换状态）
+  // 绑定打卡点击（点击左侧主区域完成打卡，永久生效不可取消）
   listEl.querySelectorAll('.chapter-main').forEach(el => {
     el.addEventListener('click', () => {
       const chId = el.dataset.chapter;
       const study = getStudy();
+      if (!study.completedChapters) study.completedChapters = {};
+      // 已永久完成则忽略
+      if (study.completedChapters[chId]) return;
+      // 标记永久完成
+      study.completedChapters[chId] = true;
+      // 同时记录当天历史，供历史记录展示
       const today = todayStr();
       if (!study[today]) study[today] = {};
-      study[today][chId] = !study[today][chId];
+      study[today][chId] = true;
       saveStudy(study);
       renderStudyCheckin();
+      renderStudyHistory();
     });
   });
 
@@ -2510,10 +2540,12 @@ function renderStudyHistory() {
   const subject = subjects.find(s => s.id === studyActiveSubject);
   if (!subject) { container.innerHTML = ''; return; }
 
-  // 收集该科目所有有打卡记录的日期
+  // 收集该科目所有有打卡记录的日期（排除 completedChapters 永久状态字段）
   const chapterIds = new Set(subject.chapters.map(ch => ch.id));
   const dates = Object.keys(study).sort().reverse().filter(date => {
+    if (date === 'completedChapters') return false;
     const day = study[date];
+    if (!day || typeof day !== 'object') return false;
     return Object.keys(day).some(k => chapterIds.has(k) && day[k]);
   });
 
