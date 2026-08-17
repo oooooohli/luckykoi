@@ -157,7 +157,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.3</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.4</button>
       </div>
     </div>
   </header>
@@ -351,6 +351,29 @@
         <div id="studyCheckinList" class="space-y-1.5"></div>
         <!-- 历史打卡记录 -->
         <div id="studyHistory" class="mt-4 pt-3 border-t border-gray-100"></div>
+      </div>
+
+      <!-- 学习记录汇总（按月） -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+        <h3 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><span>🗓️</span> 学习记录汇总</h3>
+        <!-- 科目Tab -->
+        <div class="flex gap-2 mb-3" id="monthlyTabs"></div>
+        <!-- 月份切换 -->
+        <div class="flex items-center justify-between mb-3">
+          <button id="monthlyPrev" class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 active:scale-90 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <span id="monthlyLabel" class="text-sm font-bold text-gray-700">—</span>
+          <button id="monthlyNext" class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 active:scale-90 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <!-- 月度统计卡片 -->
+        <div id="monthlyStats" class="grid grid-cols-3 gap-2 mb-3"></div>
+        <!-- 每日学习量柱状图 -->
+        <div class="relative" style="height:200px"><canvas id="monthlyChart"></canvas></div>
+        <!-- 月度详情 -->
+        <div id="monthlyDetail" class="mt-3 pt-3 border-t border-gray-100 space-y-1.5"></div>
       </div>
 
       <!-- 刷题正确率 -->
@@ -660,7 +683,11 @@ function saveMistakes(d) { localStorage.setItem(STORAGE_MISTAKES, JSON.stringify
 
 let studyActiveSubject = 'subject_economics';   // 打卡当前科目
 let quizActiveSubject = 'subject_economics';     // 刷题当前科目
-let quizChart = null;const DEFAULT_SECTIONS = [
+let quizChart = null;
+let monthlyChart = null;
+let monthlyViewMonth = null; // 'YYYY-MM'，默认本月
+let monthlyActiveSubject = 'subject_economics';  // 汇总当前科目
+const DEFAULT_SECTIONS = [
   { id:'checkin', title:'每日打卡', icon:'📋', builtin:true },
   { id:'todo',    title:'To-do List', icon:'✅', builtin:true },
   { id:'books',   title:'阅读记录', icon:'📚', builtin:true },
@@ -2399,6 +2426,7 @@ function renderStudy() {
   renderCountdown();
   renderStudyCheckin();
   renderStudyHistory();
+  renderMonthlySummary();
   renderQuizStats();
   renderMistakes();
 }
@@ -2477,6 +2505,7 @@ function renderStudyCheckin() {
       saveStudy(study);
       renderStudyCheckin();
       renderStudyHistory();
+      renderMonthlySummary();
     });
   });
 
@@ -2574,6 +2603,171 @@ function renderStudyHistory() {
     }).join('')}
     ${dates.length > 10 ? `<div class="text-[10px] text-gray-300 text-center mt-1">共 ${dates.length} 天记录</div>` : ''}
   `;
+}
+
+// 学习记录汇总（按月）
+function renderMonthlySummary() {
+  const tabContainer = document.getElementById('monthlyTabs');
+  const labelEl = document.getElementById('monthlyLabel');
+  const statsEl = document.getElementById('monthlyStats');
+  const detailEl = document.getElementById('monthlyDetail');
+  const ctx = document.getElementById('monthlyChart');
+  if (!tabContainer || !ctx) return;
+
+  // 默认本月
+  const now = new Date();
+  if (!monthlyViewMonth) {
+    monthlyViewMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+
+  // 科目 Tab
+  tabContainer.innerHTML = getSubjects().map(s => `
+    <button class="monthly-tab flex-1 py-2 rounded-xl text-xs font-semibold transition ${monthlyActiveSubject === s.id ? 'text-white' : 'bg-gray-100 text-gray-500'}" style="${monthlyActiveSubject === s.id ? 'background:linear-gradient(135deg,#14b8a6,#0d9488)' : ''}" data-subject="${s.id}">${s.title}</button>
+  `).join('');
+  tabContainer.querySelectorAll('.monthly-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      monthlyActiveSubject = btn.dataset.subject;
+      renderMonthlySummary();
+    });
+  });
+
+  // 月份标签
+  const [yy, mm] = monthlyViewMonth.split('-').map(Number);
+  labelEl.textContent = `${yy}年${mm}月`;
+
+  // 收集该科目当月每日打卡章节数
+  const study = getStudy();
+  const subject = getSubjects().find(s => s.id === monthlyActiveSubject);
+  if (!subject) return;
+  const chapterIds = new Set(subject.chapters.map(ch => ch.id));
+
+  // 当月天数
+  const daysInMonth = new Date(yy, mm, 0).getDate();
+  const dailyCounts = new Array(daysInMonth).fill(0);
+  const dailyChapters = {}; // dayIdx -> [chapterName...]
+  Object.keys(study).forEach(date => {
+    if (date === 'completedChapters') return;
+    const day = study[date];
+    if (!day || typeof day !== 'object') return;
+    if (!date.startsWith(monthlyViewMonth)) return;
+    const dayIdx = parseInt(date.slice(8, 10), 10) - 1;
+    const done = subject.chapters.filter(ch => day[ch.id]);
+    if (done.length > 0) {
+      dailyCounts[dayIdx] = done.length;
+      dailyChapters[dayIdx] = done.map(ch => ch.name.replace(/^第.+章\s*/, ''));
+    }
+  });
+
+  // 统计
+  const studyDays = dailyCounts.filter(c => c > 0).length;
+  const totalChapters = dailyCounts.reduce((a, b) => a + b, 0);
+  const avgPerDay = studyDays > 0 ? (totalChapters / studyDays).toFixed(1) : '0';
+  // 连续打卡天数（从月末往前数最近一段连续有打卡的）
+  let streak = 0;
+  for (let i = daysInMonth - 1; i >= 0; i--) {
+    if (dailyCounts[i] > 0) streak++;
+    else if (i === daysInMonth - 1) continue; // 今天还没打卡不算断
+    else break;
+  }
+
+  statsEl.innerHTML = `
+    <div class="bg-teal-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-teal-600">${studyDays}</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">打卡天数</div>
+    </div>
+    <div class="bg-cyan-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-cyan-600">${totalChapters}</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">完成章节数</div>
+    </div>
+    <div class="bg-emerald-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-emerald-600">${streak}</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">连续天数</div>
+    </div>
+  `;
+
+  // 柱状图
+  if (monthlyChart) monthlyChart.destroy();
+  const labels = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
+  const isCurrentMonth = monthlyViewMonth === `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const todayDay = isCurrentMonth ? now.getDate() : daysInMonth;
+  const bgColors = labels.map((_, i) => {
+    if (i + 1 === todayDay && isCurrentMonth) return '#0d9488';
+    return dailyCounts[i] > 0 ? '#14b8a6' : '#f1f5f9';
+  });
+  monthlyChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '学习章节数',
+        data: dailyCounts,
+        backgroundColor: bgColors,
+        borderRadius: 4,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => `${mm}月${items[0].label}日`,
+            label: ctx => ctx.parsed.y > 0 ? `学习 ${ctx.parsed.y} 章` : '未学习',
+            afterLabel: ctx => dailyChapters[ctx.dataIndex] ? '· ' + dailyChapters[ctx.dataIndex].join('、') : ''
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } }, grid: { color: '#f8fafc' } },
+        x: { ticks: { font: { size: 8 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 15 }, grid: { display: false } }
+      },
+      animation: { duration: 400 }
+    }
+  });
+
+  // 月度详情（按日倒序，仅显示有打卡的）
+  const detailDays = [];
+  for (let i = daysInMonth - 1; i >= 0; i--) {
+    if (dailyCounts[i] > 0) {
+      detailDays.push({ day: i + 1, count: dailyCounts[i], names: dailyChapters[i] || [] });
+    }
+  }
+  if (detailDays.length === 0) {
+    detailEl.innerHTML = '<p class="text-xs text-gray-300 text-center py-2">本月暂无打卡记录</p>';
+  } else {
+    detailEl.innerHTML = `
+      <div class="text-xs text-gray-400 mb-1 font-semibold">📋 本月明细</div>
+      ${detailDays.slice(0, 12).map(d => `
+        <div class="flex items-start gap-2 text-xs">
+          <span class="text-gray-400 w-10 flex-shrink-0">${mm}/${d.day}</span>
+          <span class="text-gray-600 flex-1">${d.names.map(escapeHtml).join('、')}</span>
+          <span class="text-teal-500 font-semibold flex-shrink-0">${d.count}章</span>
+        </div>
+      `).join('')}
+      ${detailDays.length > 12 ? `<div class="text-[10px] text-gray-300 text-center mt-1">共 ${detailDays.length} 天</div>` : ''}
+    `;
+  }
+
+  // 月份切换按钮
+  const prevBtn = document.getElementById('monthlyPrev');
+  const nextBtn = document.getElementById('monthlyNext');
+  if (prevBtn) prevBtn.onclick = () => {
+    let y = yy, m = mm - 1;
+    if (m < 1) { m = 12; y--; }
+    monthlyViewMonth = `${y}-${String(m).padStart(2,'0')}`;
+    renderMonthlySummary();
+  };
+  if (nextBtn) nextBtn.onclick = () => {
+    // 不超过本月
+    const cur = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    let y = yy, m = mm + 1;
+    if (m > 12) { m = 1; y++; }
+    const next = `${y}-${String(m).padStart(2,'0')}`;
+    if (next > cur) return;
+    monthlyViewMonth = next;
+    renderMonthlySummary();
+  };
 }
 
 // 易错点
