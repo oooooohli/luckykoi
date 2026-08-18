@@ -157,7 +157,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.5</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.6</button>
       </div>
     </div>
   </header>
@@ -393,6 +393,8 @@
           </button>
         </div>
         <div id="mistakeList" class="space-y-2"></div>
+        <!-- 历史易错点展开 -->
+        <div id="mistakeHistoryWrap" class="mt-3 pt-3 border-t border-gray-100"></div>
       </div>
       </div>
     </div>
@@ -681,6 +683,7 @@ let studyActiveSubject = 'subject_economics';   // 打卡当前科目
 let quizActiveSubject = 'subject_economics';     // 刷题当前科目
 let quizChart = null;
 let monthlyViewMonth = null; // 'YYYY-MM'，默认本月
+let mistakeHistoryExpanded = false; // 历史易错点展开状态
 const DEFAULT_SECTIONS = [
   { id:'checkin', title:'每日打卡', icon:'📋', builtin:true },
   { id:'todo',    title:'To-do List', icon:'✅', builtin:true },
@@ -2756,6 +2759,98 @@ function renderMistakes() {
       renderMistakes();
     });
   });
+
+  // 渲染历史易错点展开区
+  renderMistakeHistory();
+}
+
+// 历史易错点（全部科目）
+function renderMistakeHistory() {
+  const wrap = document.getElementById('mistakeHistoryWrap');
+  if (!wrap) return;
+  const allMistakes = getMistakes();
+  const subjects = getSubjects();
+  const subjMap = {};
+  subjects.forEach(s => {
+    subjMap[s.id] = { title: s.title, chapters: {} };
+    s.chapters.forEach(ch => { subjMap[s.id].chapters[ch.id] = ch.name; });
+  });
+
+  const totalCount = allMistakes.length;
+  if (totalCount === 0) {
+    wrap.innerHTML = '';
+    return;
+  }
+
+  if (!mistakeHistoryExpanded) {
+    wrap.innerHTML = `
+      <button id="mistakeHistoryToggle" class="w-full flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-teal-500 transition py-1">
+        <svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+        展开全部历史易错点（共 ${totalCount} 条）
+      </button>
+    `;
+  } else {
+    // 按科目分组展示
+    const bySubject = {};
+    allMistakes.forEach(m => {
+      const key = m.subject || 'unknown';
+      if (!bySubject[key]) bySubject[key] = [];
+      bySubject[key].push(m);
+    });
+
+    wrap.innerHTML = `
+      <button id="mistakeHistoryToggle" class="w-full flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-teal-500 transition py-1 mb-2">
+        <svg class="w-3.5 h-3.5 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+        收起历史记录（共 ${totalCount} 条）
+      </button>
+      ${Object.keys(bySubject).map(subjId => {
+        const subjInfo = subjMap[subjId];
+        const subjTitle = subjInfo ? subjInfo.title : '未分类科目';
+        const items = bySubject[subjId];
+        return `
+          <div class="mb-3">
+            <div class="text-[11px] font-bold text-gray-500 mb-1.5">📚 ${escapeHtml(subjTitle)} <span class="text-gray-300 font-normal">(${items.length})</span></div>
+            <div class="space-y-1.5">
+              ${items.map(m => {
+                const chName = subjInfo && subjInfo.chapters[m.chapter] ? subjInfo.chapters[m.chapter].replace(/^第.+章\s*/, '') : '未分类';
+                return `
+                  <div class="bg-gray-50 rounded-xl px-3 py-2 mistake-hist-item" data-id="${m.id}">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex-1 min-w-0">
+                        <div class="text-[10px] text-teal-500 mb-0.5">📌 ${escapeHtml(chName)} · ${m.time || ''}</div>
+                        <div class="text-sm text-gray-700 whitespace-pre-wrap">${escapeHtml(m.text)}</div>
+                      </div>
+                      <button class="mistake-hist-del-btn w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 transition flex-shrink-0" data-id="${m.id}">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    `;
+
+    // 绑定历史记录删除
+    wrap.querySelectorAll('.mistake-hist-del-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        saveMistakes(getMistakes().filter(m => m.id !== id));
+        renderMistakes();
+      });
+    });
+  }
+
+  // 绑定展开/收起
+  const toggle = document.getElementById('mistakeHistoryToggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      mistakeHistoryExpanded = !mistakeHistoryExpanded;
+      renderMistakeHistory();
+    });
+  }
 }
 
 // 添加易错点
