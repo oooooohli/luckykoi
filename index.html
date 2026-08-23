@@ -157,7 +157,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.7</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.8</button>
       </div>
     </div>
   </header>
@@ -2258,26 +2258,30 @@ function renderMetricTrend() {
   const tabs = document.getElementById('metricTabs');
   if (!section || !empty || !content || !tabs) return;
 
-  // 收集所有有指标数据的打卡项
+  // 收集所有有指标数据的打卡项（仅父项，子项数据合并到父项统计）
   const cfg = getMetricConfig();
   const metrics = getMetrics();
   const items = getCheckinItems();
+  const activeItems = items.filter(i => !i.archived);
 
-  // 找到所有有配置且有数据的打卡项
+  // 找到所有有配置或有子项配置的父级打卡项
   const availableItems = [];
-  for (const item of items) {
-    const itemCfg = cfg[item.id];
-    if (!itemCfg || !itemCfg.metrics || itemCfg.metrics.length === 0) continue;
+  for (const item of activeItems) {
+    if (item.parentId) continue; // 只看父项
+    const childIds = activeItems.filter(i => i.parentId === item.id).map(i => i.id);
+    const relatedIds = [item.id, ...childIds];
+    // 该项或其子项有指标配置
+    const hasCfg = relatedIds.some(rid => cfg[rid] && cfg[rid].metrics && cfg[rid].metrics.length > 0);
     // 检查是否有任何指标数据
     let hasData = false;
     for (const dateKey of Object.keys(metrics)) {
       const dayMetrics = metrics[dateKey];
-      if (dayMetrics[item.id] && Object.keys(dayMetrics[item.id]).length > 0) {
+      if (relatedIds.some(rid => dayMetrics[rid] && Object.keys(dayMetrics[rid]).length > 0)) {
         hasData = true;
         break;
       }
     }
-    if (hasData || itemCfg.metrics.length > 0) {
+    if (hasCfg || hasData) {
       availableItems.push(item);
     }
   }
@@ -2312,15 +2316,60 @@ function renderMetricTrend() {
   // 获取当前选中项的指标数据
   const currentItem = availableItems.find(a => a.id === metricTrendItem);
   if (!currentItem) return;
-  const itemCfg = cfg[metricTrendItem];
-  if (!itemCfg) return;
+  const itemCfg = cfg[metricTrendItem]; // 可能为空（父项无配置但子项有）
 
-  // 收集所有日期数据，按时间排序
+  // 收集该项 + 所有子项的 itemId（子项指标数据合并到父项一起统计）
+  const childItemIds = items.filter(i => i.parentId === metricTrendItem).map(i => i.id);
+  const relatedIds = [metricTrendItem, ...childItemIds];
+
+  // 合并配置：父项配置为主，补入子项配置中父项没有的 key（按 key 去重）
+  const mergedMetrics = [];
+  const seenKeys = new Set();
+  [metricTrendItem, ...childItemIds].forEach(rid => {
+    const c = cfg[rid];
+    if (c && c.metrics) {
+      c.metrics.forEach(m => {
+        if (!seenKeys.has(m.key)) {
+          seenKeys.add(m.key);
+          mergedMetrics.push(m);
+        } else {
+          // 同 key 取有标签的
+          const exist = mergedMetrics.find(mm => mm.key === m.key);
+          if ((!exist.label || exist.label === exist.key) && m.label && m.label !== m.key) {
+            exist.label = m.label; exist.unit = m.unit;
+          }
+        }
+      });
+    }
+  });
+
+  // 没有任何指标配置则退出
+  if (mergedMetrics.length === 0) {
+    empty.style.display = 'block';
+    content.style.display = 'none';
+    empty.innerHTML = '<p>暂无指标配置，在打卡项编辑中关联指标后即可查看趋势</p>';
+    return;
+  }
+
+  // 收集所有日期数据，合并父子项，按时间排序
   const dateData = [];
   for (const dateKey of Object.keys(metrics)) {
     const dayMetrics = metrics[dateKey];
-    if (dayMetrics[metricTrendItem]) {
-      dateData.push({ date: dateKey, values: dayMetrics[metricTrendItem] });
+    // 合并当天所有相关项的数据，同 key 优先取父项，父项没有取子项
+    const merged = {};
+    // 先放子项，再用父项覆盖（父项优先）
+    childItemIds.forEach(cid => {
+      const v = dayMetrics[cid];
+      if (v && typeof v === 'object') {
+        Object.keys(v).forEach(k => { if (v[k] !== '' && v[k] != null) merged[k] = v[k]; });
+      }
+    });
+    const parentV = dayMetrics[metricTrendItem];
+    if (parentV && typeof parentV === 'object') {
+      Object.keys(parentV).forEach(k => { if (parentV[k] !== '' && parentV[k] != null) merged[k] = parentV[k]; });
+    }
+    if (Object.keys(merged).length > 0) {
+      dateData.push({ date: dateKey, values: merged });
     }
   }
   dateData.sort((a, b) => a.date.localeCompare(b.date));
@@ -2343,7 +2392,7 @@ function renderMetricTrend() {
   });
 
   const lineColors = ['#14b8a6', '#f97316', '#6366f1', '#ec4899', '#22c55e', '#eab308'];
-  const datasets = itemCfg.metrics.map((m, idx) => ({
+  const datasets = mergedMetrics.map((m, idx) => ({
     label: m.label + (m.unit ? ` (${m.unit})` : ''),
     data: dateData.map(d => d.values[m.key] ?? null),
     borderColor: lineColors[idx % lineColors.length],
