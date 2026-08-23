@@ -157,7 +157,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.6</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.7</button>
       </div>
     </div>
   </header>
@@ -716,6 +716,45 @@ function ensureMetricConfig(itemId) {
   return cfg[itemId];
 }
 
+// 迁移：修复指标配置 key 与已录入数据 key 不一致的问题
+// 原因：旧版 saveMetricConfigFromUI 每次保存都生成新 key，导致历史数据用旧 key 存、配置用新 key，折线图取不到值
+function migrateMetricConfigKeys() {
+  try {
+    const cfg = getMetricConfig();
+    const metrics = getMetrics();
+    let changed = false;
+    const defaultLabelMap = { weight: '体重', bodyFat: '体脂率' };
+    // 遍历每个打卡项
+    Object.keys(cfg).forEach(itemId => {
+      const itemCfg = cfg[itemId];
+      if (!itemCfg || !itemCfg.metrics) return;
+      // 收集该项所有已录入数据的 key
+      const dataKeys = new Set();
+      Object.keys(metrics).forEach(date => {
+        const day = metrics[date];
+        if (day && day[itemId] && typeof day[itemId] === 'object') {
+          Object.keys(day[itemId]).forEach(k => { if (day[itemId][k] !== '' && day[itemId][k] != null) dataKeys.add(k); });
+        }
+      });
+      if (dataKeys.size === 0) return;
+      const cfgKeys = new Set(itemCfg.metrics.map(m => m.key));
+      // 对数据中存在但配置中缺失的 key，补回配置
+      let added = false;
+      dataKeys.forEach(dk => {
+        if (!cfgKeys.has(dk)) {
+          itemCfg.metrics.push({ key: dk, label: defaultLabelMap[dk] || dk, unit: defaultLabelMap[dk] ? (dk === 'weight' ? 'kg' : '%') : '' });
+          added = true;
+        }
+      });
+      if (added) changed = true;
+    });
+    if (changed) {
+      saveMetricConfig(cfg);
+      console.log('指标配置 key 迁移完成');
+    }
+  } catch(e) { console.error('migrateMetricConfigKeys:', e); }
+}
+
 // 笔记数据：{ "custom_xxx": [{ id, text, images:["data:..."] }, ...] }
 function getNotes() { try { return JSON.parse(localStorage.getItem(STORAGE_NOTES)||'{}'); } catch(e) { return {}; } }
 function saveNotes(d) { localStorage.setItem(STORAGE_NOTES, JSON.stringify(d)); }
@@ -875,6 +914,7 @@ function init() {
     updateHeaderDate();
     getCheckinItems(); // 触发数据迁移
     migrateStudyCompletions(); // 学习章节：合并为永久完成状态
+    migrateMetricConfigKeys(); // 指标配置：修复 key 与数据不一致导致折线图不更新
     renderDrawer();
     renderHome();
     renderCheckin();
@@ -1793,11 +1833,21 @@ function saveMetricConfigFromUI() {
   if (!container || !editingCheckinItemId) return;
   const labels = container.querySelectorAll('.metric-label-input');
   const units = container.querySelectorAll('.metric-unit-input');
+  // 取出已有配置的 key 列表，保存时优先复用，避免 key 变更导致历史数据失联
+  const oldCfg = getItemMetricConfig(editingCheckinItemId);
+  const oldMetrics = (oldCfg.metrics && oldCfg.metrics.length > 0) ? oldCfg.metrics : [
+    { key: 'weight', label: '体重', unit: 'kg' },
+    { key: 'bodyFat', label: '体脂率', unit: '%' },
+  ];
   const metrics = [];
   labels.forEach((l, i) => {
     const label = l.value.trim();
     const unit = units[i] ? units[i].value.trim() : '';
-    if (label) metrics.push({ key: `metric_${Date.now()}_${i}`, label, unit });
+    if (label) {
+      // 复用已有 key，没有才生成新 key
+      const key = (oldMetrics[i] && oldMetrics[i].key) ? oldMetrics[i].key : `metric_${Date.now()}_${i}`;
+      metrics.push({ key, label, unit });
+    }
   });
   const cfg = getMetricConfig();
   cfg[editingCheckinItemId] = { metrics };
@@ -3421,7 +3471,10 @@ function bindEvents() {
     if (!editingCheckinItemId) return;
     const cfg = getMetricConfig();
     if (!cfg[editingCheckinItemId]) cfg[editingCheckinItemId] = { metrics: [] };
-    // 先把当前输入框的值保存下来
+    // 先把当前输入框的值保存下来，复用已有 key 避免历史数据失联
+    const oldMetrics = (cfg[editingCheckinItemId].metrics && cfg[editingCheckinItemId].metrics.length > 0)
+      ? cfg[editingCheckinItemId].metrics
+      : [{ key: 'weight', label: '体重', unit: 'kg' }, { key: 'bodyFat', label: '体脂率', unit: '%' }];
     const container = document.getElementById('metricConfigList');
     const labels = container.querySelectorAll('.metric-label-input');
     const units = container.querySelectorAll('.metric-unit-input');
@@ -3429,7 +3482,10 @@ function bindEvents() {
     labels.forEach((l, i) => {
       const label = l.value.trim();
       const unit = units[i] ? units[i].value.trim() : '';
-      if (label) existing.push({ key: `metric_${Date.now()}_${i}`, label, unit });
+      if (label) {
+        const key = (oldMetrics[i] && oldMetrics[i].key) ? oldMetrics[i].key : `metric_${Date.now()}_${i}`;
+        existing.push({ key, label, unit });
+      }
     });
     // 添加新空行
     existing.push({ key: `metric_${Date.now()}_new`, label: '', unit: '' });
