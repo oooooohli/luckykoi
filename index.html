@@ -157,7 +157,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.8</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.9</button>
       </div>
     </div>
   </header>
@@ -1926,12 +1926,30 @@ function renderArchiveArea() {
     <div class="py-2 border-b border-gray-50 last:border-0">
       <div class="flex items-center gap-2">
         <span class="text-lg">${a.icon}</span>
-        <span class="text-sm font-medium text-gray-600">${escapeHtml(a.title)}</span>
-        <span class="text-[10px] text-gray-400">完成于 ${a.completedAt}</span>
+        <span class="text-sm font-medium text-gray-600 flex-1 truncate">${escapeHtml(a.title)}</span>
+        <span class="text-[10px] text-gray-400 flex-shrink-0">完成于 ${a.completedAt}</span>
+        <button class="archive-restore-btn flex-shrink-0 text-[11px] text-teal-500 font-semibold hover:text-teal-600 active:scale-95 transition" data-id="${a.id}" data-item="${a.itemId}">恢复</button>
       </div>
       ${a.note ? `<div class="text-xs text-gray-400 mt-1 ml-7 italic">"${escapeHtml(a.note)}"</div>` : ''}
     </div>
   `).join('');
+
+  // 绑定恢复按钮
+  content.querySelectorAll('.archive-restore-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const arcId = btn.dataset.id;
+      const itemId = btn.dataset.item;
+      if (!confirm('确定恢复此打卡项吗？它将重新出现在打卡列表中。')) return;
+      // 恢复打卡项的 archived 状态
+      const items = getCheckinItems();
+      const item = items.find(i => i.id === itemId);
+      if (item) { item.archived = false; saveCheckinItems(items); }
+      // 从归档记录中删除该条
+      saveArchives(getArchives().filter(a => a.id !== arcId));
+      renderCheckin();
+      renderArchiveArea();
+    });
+  });
 }
 
 // ==================== 汇总统计 ====================
