@@ -157,7 +157,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v5.9</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.0</button>
       </div>
     </div>
   </header>
@@ -242,6 +242,23 @@
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
         添加打卡项
       </button>
+
+      <!-- 睡眠记录 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-gray-700 flex items-center gap-1.5"><span>😴</span> 睡眠记录</h3>
+          <button id="addSleepBtn" class="text-xs text-teal-500 font-medium hover:text-teal-600 flex items-center gap-0.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+            记录睡眠
+          </button>
+        </div>
+        <!-- 统计卡片 -->
+        <div id="sleepStats" class="grid grid-cols-3 gap-2 mb-3"></div>
+        <!-- 折线图 -->
+        <div id="sleepChartWrap" class="relative" style="height:220px"><canvas id="sleepChart"></canvas></div>
+        <!-- 最近记录 -->
+        <div id="sleepRecords" class="mt-3 pt-3 border-t border-gray-100 space-y-1.5"></div>
+      </div>
 
       <!-- 归档区域 -->
       <div class="bg-white rounded-2xl shadow-sm p-4 mb-5">
@@ -587,6 +604,7 @@ const STORAGE_ARCHIVES= 'luckyKoi.archives';
 const STORAGE_METRICS = 'luckyKoi.metrics';
 const STORAGE_METRIC_CFG = 'luckyKoi.metricConfig';
 const STORAGE_NOTES = 'luckyKoi.notes';
+const STORAGE_SLEEP = 'luckyKoi.sleep';
 const IDB_NAME = 'luckyKoiDB';
 const IDB_STORE = 'images';
 
@@ -714,6 +732,65 @@ function ensureMetricConfig(itemId) {
   if (!cfg[itemId]) cfg[itemId] = { metrics: [] };
   saveMetricConfig(cfg);
   return cfg[itemId];
+}
+
+// 睡眠记录：{ "2026-09-01": { bed:"23:30", wake:"07:00", duration:7.5 } }  duration 单位小时
+function getSleep() { try { return JSON.parse(localStorage.getItem(STORAGE_SLEEP)||'{}'); } catch(e) { return {}; } }
+function saveSleep(d) { localStorage.setItem(STORAGE_SLEEP, JSON.stringify(d)); }
+
+// 智能解析睡眠输入：支持 23:30-07:00 / 7小时30分 / 7.5小时 / 7.5 / 450分钟 / 7h30m
+function parseSleepInput(raw) {
+  if (!raw) return null;
+  let text = String(raw).trim();
+  // 预处理：23点半 → 23:30
+  text = text.replace(/(\d{1,2})点半/g, '$1:30');
+  // 1) 时间段：23:30-07:00 / 23:30~7:00 / 23:30 到 07:00 / 23:30 07:00
+  const range = text.match(/(\d{1,2})[:：](\d{1,2})?\s*[-–~至到\s,，]+\s*(\d{1,2})[:：](\d{1,2})?/);
+  if (range) {
+    let bh = +range[1], bm = +(range[2] || 0), wh = +range[3], wm = +(range[4] || 0);
+    if (bh >= 24) bh -= 24;
+    if (wh >= 24) wh -= 24;
+    if (bh < 24 && wh < 24 && bm < 60 && wm < 60) {
+      let dur = (wh + wm/60) - (bh + bm/60);
+      if (dur <= 0) dur += 24; // 跨天
+      if (dur > 0.1 && dur <= 24) {
+        return {
+          bed: `${String(bh).padStart(2,'0')}:${String(bm).padStart(2,'0')}`,
+          wake: `${String(wh).padStart(2,'0')}:${String(wm).padStart(2,'0')}`,
+          duration: Math.round(dur * 100) / 100
+        };
+      }
+    }
+  }
+  // 2) X小时Y分 / Xh Ym / X小时 / Xh
+  const hm = text.match(/(\d+(?:\.\d+)?)\s*(?:小时|h|H)\s*(?:(\d+)\s*(?:分|分钟|m|M))?/);
+  if (hm) {
+    const dur = +hm[1] + (+(hm[2] || 0)) / 60;
+    if (dur > 0 && dur <= 24) return { bed: '', wake: '', duration: Math.round(dur * 100) / 100 };
+  }
+  // 3) X分钟
+  const minOnly = text.match(/(\d+(?:\.\d+)?)\s*分钟/);
+  if (minOnly) {
+    const dur = (+minOnly[1]) / 60;
+    if (dur > 0 && dur <= 24) return { bed: '', wake: '', duration: Math.round(dur * 100) / 100 };
+  }
+  // 4) 纯数字（小时）
+  const num = text.match(/^(\d+(?:\.\d+)?)\s*(?:小时|h|个)?$/);
+  if (num) {
+    const dur = +num[1];
+    if (dur > 0 && dur <= 24) return { bed: '', wake: '', duration: dur };
+  }
+  return null;
+}
+
+// 时长显示格式化：7.53 → "7小时32分"
+function fmtSleepDur(hours) {
+  if (hours == null || isNaN(hours)) return '--';
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  if (m === 0) return `${h}小时`;
+  if (h === 0) return `${m}分钟`;
+  return `${h}小时${m}分`;
 }
 
 // 迁移：修复指标配置 key 与已录入数据 key 不一致的问题
@@ -898,6 +975,8 @@ let todoViewDate = todayStr();  // Todo 日期
 let weekChart = null;           // 周图表
 let yearChart = null;           // 年图表
 let metricLineChart = null;     // 指标折线图
+let sleepChart = null;          // 睡眠时长折线图
+let sleepSig = '';              // 睡眠数据签名（避免无变化时重绘图表）
 let metricTrendItem = null;     // 当前选中的指标项
 let editingSectionId = null;    // 正在编辑的事项 ID
 let editingBookId = null;       // 正在编辑的书籍 ID
@@ -993,7 +1072,7 @@ function navigateTo(pageId, title) {
   document.getElementById('pageTitle').textContent = title || '幸运鲤的工作台';
 
   // 如果是打卡或 Todo 或阅读，刷新数据
-  if (pageId === 'checkin') renderCheckin();
+  if (pageId === 'checkin') { sleepSig = ''; renderCheckin(); } // 进入打卡页时强制重绘睡眠图表
   if (pageId === 'todo') renderTodo();
   if (pageId === 'books') renderBooks();
   if (pageId === 'study') renderStudy();
@@ -1464,6 +1543,7 @@ function renderCheckin() {
   bindCheckinEvents();
   renderArchiveArea();
   renderSummary();
+  renderSleep();
 }
 
 function bindCheckinEvents() {
@@ -1949,6 +2029,251 @@ function renderArchiveArea() {
       renderCheckin();
       renderArchiveArea();
     });
+  });
+}
+
+// ==================== 睡眠记录 ====================
+const SLEEP_GOAL_HOURS = 8; // 睡眠目标（小时）
+
+function renderSleep() {
+  const statsEl = document.getElementById('sleepStats');
+  const recordsEl = document.getElementById('sleepRecords');
+  const ctx = document.getElementById('sleepChart');
+  const chartWrap = document.getElementById('sleepChartWrap');
+  if (!statsEl || !recordsEl || !ctx) return;
+
+  // 数据没变化且图表已存在且页面可见时，跳过重绘（避免打卡切换时图表闪烁）
+  const sig = JSON.stringify(getSleep());
+  const visible = chartWrap && chartWrap.offsetParent !== null;
+  if (sleepChart && sleepSig === sig && visible) return;
+  sleepSig = sig;
+
+  // 绑定「记录睡眠」按钮（只绑一次）
+  const addBtn = document.getElementById('addSleepBtn');
+  if (addBtn && !addBtn.dataset.bound) {
+    addBtn.dataset.bound = '1';
+    addBtn.addEventListener('click', () => openSleepEntry());
+  }
+
+  const sleep = getSleep();
+  const dates = Object.keys(sleep).filter(d => sleep[d] && sleep[d].duration > 0).sort(); // 升序
+
+  // 无数据
+  if (dates.length === 0) {
+    statsEl.innerHTML = `
+      <div class="col-span-3 bg-indigo-50 rounded-xl p-3 text-center">
+        <div class="text-xs text-gray-500">暂无睡眠记录</div>
+        <div class="text-[10px] text-gray-400 mt-1">点击「记录睡眠」，输入华为运动健康显示的时长即可</div>
+      </div>`;
+    chartWrap.style.display = 'none';
+    recordsEl.innerHTML = '';
+    if (sleepChart) { sleepChart.destroy(); sleepChart = null; }
+    return;
+  }
+  chartWrap.style.display = 'block';
+
+  // 统计：最新 / 近7日均 / 近30日均
+  const desc = [...dates].reverse();
+  const latest = sleep[desc[0]];
+  const avg = (arr) => arr.length ? (arr.reduce((s, d) => s + sleep[d].duration, 0) / arr.length) : null;
+  const avg7 = avg(desc.slice(0, 7));
+  const avg30 = avg(desc.slice(0, 30));
+  const fmtH = v => v == null ? '--' : v.toFixed(1) + 'h';
+  const latestLabel = desc[0] === todayStr() ? '昨晚睡眠' : '最新记录';
+
+  statsEl.innerHTML = `
+    <div class="bg-indigo-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-indigo-600">${latest.duration.toFixed(1)}<span class="text-xs">h</span></div>
+      <div class="text-[10px] text-gray-500 mt-0.5">${latestLabel}</div>
+    </div>
+    <div class="bg-teal-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-teal-600">${fmtH(avg7)}</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">近7日均</div>
+    </div>
+    <div class="bg-cyan-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-cyan-600">${fmtH(avg30)}</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">近30日均</div>
+    </div>
+  `;
+
+  // 折线图：最近30天
+  const chartDates = dates.slice(-30);
+  const labels = chartDates.map(d => {
+    const p = d.split('-');
+    return `${parseInt(p[1])}/${parseInt(p[2])}`;
+  });
+  const durData = chartDates.map(d => sleep[d].duration);
+  if (sleepChart) sleepChart.destroy();
+  sleepChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '睡眠时长',
+          data: durData,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,0.12)',
+          borderWidth: 2.5,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: durData.map(v => v >= SLEEP_GOAL_HOURS ? '#22c55e' : '#6366f1'),
+          tension: 0.35,
+          fill: true,
+          spanGaps: false,
+        },
+        {
+          label: `目标 ${SLEEP_GOAL_HOURS}h`,
+          data: labels.map(() => SLEEP_GOAL_HOURS),
+          borderColor: '#f97316',
+          borderWidth: 1.5,
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, boxHeight: 2, padding: 10, font: { size: 10 }, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            title: items => {
+              const d = chartDates[items[0].dataIndex];
+              const r = sleep[d];
+              const bedWake = (r.bed && r.wake) ? `（${r.bed} - ${r.wake}）` : '';
+              return labels[items[0].dataIndex] + bedWake;
+            },
+            label: c => c.datasetIndex === 0 ? `睡眠 ${fmtSleepDur(c.parsed.y)}` : null
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: false, suggestedMin: 4, suggestedMax: 10, ticks: { callback: v => v + 'h', font: { size: 10 } }, grid: { color: '#f1f5f9' } },
+        x: { ticks: { font: { size: 9 }, maxRotation: 45 }, grid: { display: false } }
+      },
+      animation: { duration: 400 }
+    }
+  });
+
+  // 最近记录（倒序，最多10条）
+  const recent = desc.slice(0, 10);
+  recordsEl.innerHTML = `
+    <div class="text-xs text-gray-400 mb-1 font-semibold">📋 最近记录</div>
+    ${recent.map(d => {
+      const r = sleep[d];
+      const isToday = d === todayStr();
+      const bedWake = (r.bed && r.wake) ? `${r.bed} - ${r.wake}` : '';
+      const good = r.duration >= SLEEP_GOAL_HOURS;
+      return `
+        <div class="flex items-center gap-2 text-xs">
+          <span class="text-gray-400 w-14 flex-shrink-0">${isToday ? '今天' : d.slice(5).replace('-', '/')}</span>
+          <span class="flex-1 text-gray-500 truncate">${bedWake ? escapeHtml(bedWake) : '<span class="text-gray-300">仅时长</span>'}</span>
+          <span class="font-semibold flex-shrink-0 ${good ? 'text-teal-600' : 'text-orange-500'}">${fmtSleepDur(r.duration)}</span>
+          <button class="sleep-del-btn w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 transition flex-shrink-0" data-date="${d}">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>`;
+    }).join('')}
+  `;
+
+  // 删除记录
+  recordsEl.querySelectorAll('.sleep-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const d = btn.dataset.date;
+      if (!confirm(`确定删除 ${d} 的睡眠记录吗？`)) return;
+      const s = getSleep();
+      delete s[d];
+      saveSleep(s);
+      renderSleep();
+    });
+  });
+}
+
+// 打开睡眠录入面板
+function openSleepEntry(dateStr, prefill) {
+  const existing = document.getElementById('sleepEntryOverlay');
+  if (existing) existing.remove();
+
+  const date = dateStr || todayStr();
+  const rec = (getSleep()[date] || {});
+  const prefillText = prefill !== undefined ? prefill
+    : (rec.bed && rec.wake ? `${rec.bed}-${rec.wake}` : (rec.duration ? String(rec.duration) : ''));
+
+  const overlay = document.createElement('div');
+  overlay.id = 'sleepEntryOverlay';
+  overlay.className = 'fixed inset-0 bg-black/40 z-[70] flex items-end justify-center';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.innerHTML = `
+    <div class="bg-white rounded-t-3xl w-full max-w-lg p-5 animate-slide-up" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-800">😴 记录睡眠</h3>
+        <button class="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition" onclick="document.getElementById('sleepEntryOverlay').remove()">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="mb-3">
+        <div class="text-xs text-gray-500 mb-1.5">日期（醒来日）</div>
+        <input type="date" id="sleepDateInput" class="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition" value="${date}" max="${todayStr()}">
+      </div>
+      <div class="mb-3">
+        <div class="text-xs text-gray-500 mb-1.5">睡眠时长或时间段</div>
+        <input type="text" id="sleepTextInput" class="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition" placeholder="如：7小时32分 / 7.5 / 23:30-07:00" value="${escapeHtml(prefillText)}">
+        <p class="text-[10px] text-gray-400 mt-1.5">💡 支持华为运动健康显示格式：7小时32分、7.5小时、23:30-07:00、450分钟、7h30m</p>
+      </div>
+      <div id="sleepParsePreview" class="mb-3 text-xs text-teal-600 hidden"></div>
+      <div class="flex gap-2">
+        <button id="sleepCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
+        <button id="sleepSave" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 text-white font-semibold text-sm active:scale-95 transition">保存</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // 实时解析预览
+  const input = overlay.querySelector('#sleepTextInput');
+  const preview = overlay.querySelector('#sleepParsePreview');
+  const showPreview = () => {
+    const parsed = parseSleepInput(input.value);
+    if (parsed && input.value.trim()) {
+      const bedWake = (parsed.bed && parsed.wake) ? `${parsed.bed} - ${parsed.wake} · ` : '';
+      preview.textContent = `✓ 解析结果：${bedWake}${fmtSleepDur(parsed.duration)}`;
+      preview.classList.remove('hidden');
+    } else if (input.value.trim()) {
+      preview.textContent = '✗ 暂无法识别，试试 7小时30分 或 23:30-07:00';
+      preview.className = 'mb-3 text-xs text-orange-500';
+    } else {
+      preview.classList.add('hidden');
+    }
+  };
+  input.addEventListener('input', showPreview);
+  if (prefillText) showPreview();
+
+  overlay.querySelector('#sleepCancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#sleepSave').addEventListener('click', () => {
+    const dateVal = overlay.querySelector('#sleepDateInput').value;
+    const parsed = parseSleepInput(input.value);
+    if (!dateVal) { alert('请选择日期'); return; }
+    if (!parsed) { alert('无法识别睡眠时长，请输入如：7小时32分、7.5 或 23:30-07:00'); return; }
+    const s = getSleep();
+    s[dateVal] = { bed: parsed.bed || '', wake: parsed.wake || '', duration: parsed.duration };
+    saveSleep(s);
+    overlay.remove();
+    renderSleep();
+  });
+
+  // 动画
+  requestAnimationFrame(() => {
+    const sheet = overlay.querySelector('.animate-slide-up');
+    if (sheet) {
+      sheet.style.transform = 'translateY(100%)';
+      sheet.style.transition = 'transform 0.3s ease-out';
+      requestAnimationFrame(() => { sheet.style.transform = 'translateY(0)'; });
+    }
   });
 }
 
