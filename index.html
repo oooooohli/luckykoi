@@ -107,6 +107,13 @@
     .book-card { transition: all 0.2s; }
     .book-card:active { transform: scale(0.98); }
 
+    /* 隐藏滚动条 */
+    .scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+    /* 阅读分类 Tab */
+    .cat-tab { white-space: nowrap; }
+
     /* 展开折叠 */
     .book-expand { max-height: 0; overflow: hidden; transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.3s, padding 0.3s; opacity: 0; padding-top: 0; padding-bottom: 0; }
     .book-expand.open { max-height: 500px; opacity: 1; padding-top: 0.5rem; padding-bottom: 0.75rem; }
@@ -157,7 +164,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.1</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.2</button>
       </div>
     </div>
   </header>
@@ -187,7 +194,7 @@
           </div>
           <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-3 text-center">
             <div class="text-3xl mb-1">📚</div>
-            <div class="text-xs text-gray-500">已读书籍</div>
+            <div class="text-xs text-gray-500">收藏条目</div>
             <div class="text-xl font-bold text-teal-600" id="homeBooks">0</div>
           </div>
           <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-3 text-center">
@@ -338,18 +345,26 @@
 
     <!-- ===== 阅读记录 ===== -->
     <div class="page-content" id="page-books">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-sm font-bold text-gray-700 flex items-center gap-1.5"><span>📚</span> 我的书架</h2>
-        <button id="addBookBtn" class="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white rounded-xl font-semibold text-xs shadow-sm active:scale-95 transition flex items-center gap-1 ripple">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
-          添加书籍
-        </button>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold text-gray-700 flex items-center gap-1.5"><span>📚</span> 我的阅读收藏</h2>
+        <div class="flex items-center gap-1.5">
+          <button id="manageCategoryBtn" class="px-3 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-semibold text-xs shadow-sm active:scale-95 transition flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            管理分类
+          </button>
+          <button id="addBookBtn" class="px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white rounded-xl font-semibold text-xs shadow-sm active:scale-95 transition flex items-center gap-1 ripple">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+            <span id="addBookBtnLabel">添加书籍</span>
+          </button>
+        </div>
       </div>
+      <!-- 分类 Tabs -->
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-2 -mx-1 px-1 scrollbar-hide" id="readingCategoryTabs"></div>
       <div class="space-y-3" id="bookList"></div>
       <div class="text-center py-12" id="bookEmpty">
-        <div class="text-5xl mb-3">📚</div>
-        <p class="text-gray-400 text-sm">还没有添加任何书籍</p>
-        <p class="text-gray-300 text-xs mt-1">记录你的阅读之旅吧</p>
+        <div class="text-5xl mb-3" id="bookEmptyIcon">📚</div>
+        <p class="text-gray-400 text-sm" id="bookEmptyText">还没有添加任何书籍</p>
+        <p class="text-gray-300 text-xs mt-1" id="bookEmptyHint">记录你的阅读之旅吧</p>
       </div>
     </div>
 
@@ -469,11 +484,11 @@
   <div class="modal-overlay" id="bookModal">
     <div class="modal-sheet" style="max-height:90vh; overflow-y:auto;">
       <h3 class="text-base font-bold text-gray-800 mb-1" id="bookModalTitle">添加书籍</h3>
-      <p class="text-xs text-gray-400 mb-4">记录你的阅读足迹</p>
+      <p class="text-xs text-gray-400 mb-4" id="bookModalSubtitle">记录你的阅读足迹</p>
 
       <!-- 子模块1: 书籍信息 -->
       <div class="bg-gray-50 rounded-xl p-3 mb-4">
-        <div class="sub-module-header mb-3"><span>📖</span> 书籍信息</div>
+        <div class="sub-module-header mb-3"><span id="bookModalCatIcon">📖</span> <span id="bookModalCatName">书籍</span>信息</div>
         <!-- 封面照片 -->
         <div class="mb-3">
           <div class="text-xs text-gray-500 mb-2">封面照片</div>
@@ -487,25 +502,25 @@
           </div>
           <button id="removeCoverBtn" class="hidden mt-1 text-xs text-red-400 hover:text-red-500">移除封面</button>
         </div>
-        <!-- 书名 -->
+        <!-- 名称 -->
         <div class="mb-3">
-          <div class="text-xs text-gray-500 mb-1.5">书名 <span class="text-red-400">*</span></div>
-          <input type="text" id="bookTitleInput" placeholder="输入书名" maxlength="50" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition">
+          <div class="text-xs text-gray-500 mb-1.5"><span id="bookTitleLabel">书名</span> <span class="text-red-400">*</span></div>
+          <input type="text" id="bookTitleInput" placeholder="输入名称" maxlength="50" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition">
         </div>
-        <!-- 作者 -->
+        <!-- 作者/导演 -->
         <div class="mb-1">
-          <div class="text-xs text-gray-500 mb-1.5">作者</div>
-          <input type="text" id="bookAuthorInput" placeholder="输入作者" maxlength="30" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition">
+          <div class="text-xs text-gray-500 mb-1.5" id="bookAuthorLabel">作者</div>
+          <input type="text" id="bookAuthorInput" placeholder="输入名称" maxlength="30" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition">
         </div>
       </div>
 
-      <!-- 子模块2: 阅读评分 -->
+      <!-- 子模块2: 评分 -->
       <div class="bg-gray-50 rounded-xl p-3 mb-4">
-        <div class="sub-module-header mb-3"><span>⭐</span> 阅读评分</div>
+        <div class="sub-module-header mb-3"><span>⭐</span> <span id="bookRatingHeader">阅读评分</span></div>
         <!-- 阅读指数 -->
         <div class="mb-3">
           <div class="flex items-center justify-between mb-1.5">
-            <span class="text-xs text-gray-500">阅读指数</span>
+            <span class="text-xs text-gray-500" id="bookIndexLabel">阅读指数</span>
             <span class="text-sm font-bold text-teal-600" id="indexValue">50</span>
           </div>
           <input type="range" id="bookIndexSlider" min="0" max="100" value="50" class="index-slider">
@@ -523,10 +538,10 @@
         </div>
       </div>
 
-      <!-- 子模块3: 读书心得 -->
+      <!-- 子模块3: 心得 -->
       <div class="bg-gray-50 rounded-xl p-3 mb-4">
-        <div class="sub-module-header mb-3"><span>✍️</span> 读书心得</div>
-        <textarea id="bookNotesInput" placeholder="写下你的读书心得…" maxlength="1000" rows="3" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition resize-none"></textarea>
+        <div class="sub-module-header mb-3"><span>✍️</span> <span id="bookNotesHeader">读书心得</span></div>
+        <textarea id="bookNotesInput" placeholder="写下你的心得…" maxlength="1000" rows="3" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 transition resize-none"></textarea>
       </div>
 
       <!-- 按钮 -->
@@ -534,6 +549,37 @@
         <button id="bookModalCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
         <button id="bookModalConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">确认</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ========== 分类管理弹窗 ========== -->
+  <div class="modal-overlay" id="categoryManageModal">
+    <div class="modal-sheet" style="max-height:90vh; overflow-y:auto;">
+      <h3 class="text-base font-bold text-gray-800 mb-1">管理阅读分类</h3>
+      <p class="text-xs text-gray-400 mb-4">添加、编辑或删除分类（如书籍、电影、剧集等）</p>
+
+      <div class="space-y-2 mb-4" id="categoryManageList"></div>
+
+      <button id="addCategoryBtn" class="w-full py-3 rounded-xl border-2 border-dashed border-teal-300 text-teal-600 text-sm font-semibold hover:bg-teal-50 active:scale-95 transition flex items-center justify-center gap-1 mb-3">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+        新增分类
+      </button>
+
+      <!-- 图标选择器（仅在新增/编辑分类时显示） -->
+      <div id="categoryEditPanel" class="hidden bg-gray-50 rounded-xl p-3 mb-3">
+        <div class="text-xs text-gray-500 mb-2">选择图标</div>
+        <div class="flex flex-wrap gap-2 mb-3" id="categoryIconPicker"></div>
+        <div class="text-xs text-gray-500 mb-1.5">分类名称</div>
+        <input type="text" id="categoryNameInput" placeholder="如：电影、剧集、播客" maxlength="12" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 mb-3">
+        <div class="text-xs text-gray-500 mb-1.5">创作者字段名</div>
+        <input type="text" id="categoryCreatorInput" placeholder="如：导演、主播、主持" maxlength="10" class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-teal-400 mb-3">
+        <div class="flex gap-2">
+          <button id="categoryEditCancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 font-semibold text-xs">取消</button>
+          <button id="categoryEditSave" class="flex-1 py-2.5 rounded-xl bg-teal-500 text-white font-semibold text-xs">保存</button>
+        </div>
+      </div>
+
+      <button id="categoryManageClose" class="w-full py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">完成</button>
     </div>
   </div>
 
@@ -608,6 +654,7 @@ const STORAGE_METRICS = 'luckyKoi.metrics';
 const STORAGE_METRIC_CFG = 'luckyKoi.metricConfig';
 const STORAGE_NOTES = 'luckyKoi.notes';
 const STORAGE_SLEEP = 'luckyKoi.sleep';
+const STORAGE_READING_CATEGORIES = 'luckyKoi.readingCategories';
 const IDB_NAME = 'luckyKoiDB';
 const IDB_STORE = 'images';
 
@@ -971,6 +1018,30 @@ async function deleteImage(id) {
 function getBooks() { try { return JSON.parse(localStorage.getItem(STORAGE_BOOKS)||'[]'); } catch(e) { return []; } }
 function saveBooks(d) { localStorage.setItem(STORAGE_BOOKS, JSON.stringify(d)); }
 
+// 默认阅读分类（书籍内置不可删除，其他可编辑）
+const DEFAULT_READING_CATEGORIES = [
+  { id:'cat_book',   title:'书籍', icon:'📖', creatorLabel:'作者', builtin:true },
+  { id:'cat_movie',  title:'电影', icon:'🎬', creatorLabel:'导演', builtin:false },
+  { id:'cat_drama',  title:'剧集', icon:'📺', creatorLabel:'导演', builtin:false },
+  { id:'cat_podcast',title:'播客', icon:'🎙️', creatorLabel:'主播', builtin:false },
+];
+function getReadingCategories() {
+  try {
+    const list = JSON.parse(localStorage.getItem(STORAGE_READING_CATEGORIES)||'null');
+    if (Array.isArray(list) && list.length > 0) return list;
+  } catch(e) {}
+  // 未初始化：写入默认
+  localStorage.setItem(STORAGE_READING_CATEGORIES, JSON.stringify(DEFAULT_READING_CATEGORIES));
+  return [...DEFAULT_READING_CATEGORIES];
+}
+function saveReadingCategories(list) {
+  localStorage.setItem(STORAGE_READING_CATEGORIES, JSON.stringify(list));
+}
+function getReadingCategory(id) {
+  const list = getReadingCategories();
+  return list.find(c => c.id === id) || list[0];
+}
+
 // ==================== 全局状态 ====================
 let currentPage = 'home';       // 当前页面
 let summaryPeriod = 'week';     // 汇总周期
@@ -986,6 +1057,7 @@ let editingBookId = null;       // 正在编辑的书籍 ID
 let bookRating = 0;             // 当前评分
 let bookCoverFile = null;       // 当前选中的封面文件
 let bookCoverDataUrl = null;    // 当前封面的 data URL（编辑时已有图片）
+let currentReadingCategory = 'cat_book'; // 阅读页当前选中的分类
 
 // ==================== 初始化 ====================
 function init() {
@@ -3464,23 +3536,63 @@ function renderQuizStats() {
 
 // ==================== 阅读记录 ====================
 function renderBooks() {
-  const books = getBooks();
+  const categories = getReadingCategories();
+  const allBooks = getBooks();
+
+  // 确保 currentReadingCategory 合法
+  if (!categories.find(c => c.id === currentReadingCategory)) {
+    currentReadingCategory = categories[0] ? categories[0].id : 'cat_book';
+  }
+  const currentCat = categories.find(c => c.id === currentReadingCategory) || categories[0];
+
+  // 渲染顶部 Tabs
+  const tabsEl = document.getElementById('readingCategoryTabs');
+  if (tabsEl) {
+    tabsEl.innerHTML = categories.map(c => `
+      <button class="cat-tab flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition ${c.id===currentReadingCategory?'bg-gradient-to-r from-teal-500 to-cyan-600 text-white shadow-sm':'bg-white border border-gray-200 text-gray-600'}" data-id="${c.id}">
+        <span class="mr-1">${c.icon}</span>${escapeHtml(c.title)}
+        <span class="ml-1 opacity-70 text-[10px]">${allBooks.filter(b => (b.category||'cat_book')===c.id).length}</span>
+      </button>
+    `).join('');
+    tabsEl.querySelectorAll('.cat-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentReadingCategory = btn.dataset.id;
+        renderBooks();
+      });
+    });
+  }
+
+  // 添加按钮文案
+  const addLabel = document.getElementById('addBookBtnLabel');
+  if (addLabel) addLabel.textContent = '添加' + currentCat.title;
+
   const listEl = document.getElementById('bookList');
   const emptyEl = document.getElementById('bookEmpty');
   if (!listEl || !emptyEl) return;
 
+  // 按当前分类筛选
+  const books = allBooks.filter(b => (b.category || 'cat_book') === currentReadingCategory);
+
   if (books.length === 0) {
     listEl.innerHTML = '';
     emptyEl.style.display = 'block';
+    const iconEl = document.getElementById('bookEmptyIcon');
+    const textEl = document.getElementById('bookEmptyText');
+    const hintEl = document.getElementById('bookEmptyHint');
+    if (iconEl) iconEl.textContent = currentCat.icon;
+    if (textEl) textEl.textContent = '还没有添加任何' + currentCat.title;
+    if (hintEl) hintEl.textContent = '记录你的' + currentCat.title + '之旅吧';
     return;
   }
   emptyEl.style.display = 'none';
 
-  listEl.innerHTML = books.map(b => `
+  listEl.innerHTML = books.map(b => {
+    const cat = categories.find(c => c.id === (b.category || 'cat_book')) || currentCat;
+    return `
     <div class="book-card bg-white rounded-2xl shadow-sm overflow-hidden" data-id="${b.id}">
       <!-- 折叠标题栏 -->
       <div class="flex items-center gap-3 px-4 py-3 book-header cursor-pointer select-none" data-id="${b.id}">
-        <span class="text-xl">📖</span>
+        <span class="text-xl">${cat.icon}</span>
         <div class="flex-1 min-w-0">
           <div class="font-semibold text-gray-800 text-sm truncate">${escapeHtml(b.title)}</div>
           ${b.author ? `<div class="text-xs text-gray-400">${escapeHtml(b.author)}</div>` : ''}
@@ -3493,32 +3605,32 @@ function renderBooks() {
 
       <!-- 展开内容 -->
       <div class="book-expand px-4" data-id="${b.id}">
-        <!-- 子模块1: 书籍信息 -->
+        <!-- 子模块1: 信息 -->
         <div class="mb-3">
-          <div class="sub-module-header"><span>📖</span> 书籍信息</div>
+          <div class="sub-module-header"><span>${cat.icon}</span> ${escapeHtml(cat.title)}信息</div>
           <div class="flex gap-3">
             <div class="w-16 h-20 flex-shrink-0 rounded-lg bg-gray-100 overflow-hidden" id="cover-${b.id}">
-              ${b.coverImageId ? '<div class="w-full h-full flex items-center justify-center text-gray-300"><svg class="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>' : '<div class="w-full h-full flex items-center justify-center text-2xl bg-gradient-to-br from-teal-100 to-cyan-100">📖</div>'}
+              ${b.coverImageId ? '<div class="w-full h-full flex items-center justify-center text-gray-300"><svg class="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>' : '<div class="w-full h-full flex items-center justify-center text-2xl bg-gradient-to-br from-teal-100 to-cyan-100">'+cat.icon+'</div>'}
             </div>
             <div class="flex-1 text-sm">
-              <div class="text-gray-500 text-xs">书名</div>
+              <div class="text-gray-500 text-xs">名称</div>
               <div class="text-gray-800 font-medium">${escapeHtml(b.title)}</div>
-              <div class="text-gray-500 text-xs mt-1.5">作者</div>
+              <div class="text-gray-500 text-xs mt-1.5">${escapeHtml(cat.creatorLabel || '作者')}</div>
               <div class="text-gray-800">${b.author ? escapeHtml(b.author) : '<span class="text-gray-300 italic">未填写</span>'}</div>
             </div>
           </div>
         </div>
 
-        <!-- 子模块2: 阅读评分 -->
+        <!-- 子模块2: 评分 -->
         <div class="mb-3">
-          <div class="sub-module-header"><span>⭐</span> 阅读评分</div>
+          <div class="sub-module-header"><span>⭐</span> 评分</div>
           <div class="flex items-center gap-4">
             <div>
               <div class="text-xs text-gray-500 mb-1">星级评分</div>
               <div class="flex gap-0.5 text-lg">${[1,2,3,4,5].map(i => `<span class="${i<=b.rating?'text-amber-400':'text-gray-200'}">★</span>`).join('')}</div>
             </div>
             <div class="flex-1">
-              <div class="text-xs text-gray-500 mb-1">阅读指数 <span class="font-bold text-teal-600">${b.readingIndex||0}</span></div>
+              <div class="text-xs text-gray-500 mb-1">${cat.id==='cat_book'?'阅读指数':'完成度'} <span class="font-bold text-teal-600">${b.readingIndex||0}</span></div>
               <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                 <div class="bg-gradient-to-r from-teal-400 to-cyan-500 h-full rounded-full" style="width:${b.readingIndex||0}%"></div>
               </div>
@@ -3526,9 +3638,9 @@ function renderBooks() {
           </div>
         </div>
 
-        <!-- 子模块3: 读书心得 -->
+        <!-- 子模块3: 心得 -->
         <div class="mb-2">
-          <div class="sub-module-header"><span>✍️</span> 读书心得</div>
+          <div class="sub-module-header"><span>✍️</span> 心得</div>
           <div class="text-sm text-gray-600 leading-relaxed bg-gray-50 rounded-xl p-3">
             ${b.notes ? escapeHtml(b.notes) : '<span class="text-gray-300 italic">暂无心得</span>'}
           </div>
@@ -3547,7 +3659,7 @@ function renderBooks() {
         </div>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 
   // 异步加载封面图片
   books.forEach(async b => {
@@ -3586,7 +3698,7 @@ function renderBooks() {
   listEl.querySelectorAll('.book-delete-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (confirm('确定删除这本书吗？')) deleteBook(btn.dataset.id);
+      if (confirm('确定删除吗？')) deleteBook(btn.dataset.id);
     });
   });
 }
@@ -3597,8 +3709,27 @@ function openBookModal(id) {
   bookCoverFile = null;
   bookCoverDataUrl = null;
 
-  const book = id ? getBooks().find(b => b.id === id) : null;
-  document.getElementById('bookModalTitle').textContent = book ? '编辑书籍' : '添加书籍';
+  const books = getBooks();
+  const categories = getReadingCategories();
+  const book = id ? books.find(b => b.id === id) : null;
+  // 解析当前条目的分类（编辑时跟随条目，新建时跟随当前 Tab）
+  const bookCategoryId = book ? (book.category || 'cat_book') : currentReadingCategory;
+  const cat = categories.find(c => c.id === bookCategoryId) || categories[0];
+
+  // 标题与字段文案
+  document.getElementById('bookModalTitle').textContent = book ? ('编辑' + cat.title) : ('添加' + cat.title);
+  document.getElementById('bookModalSubtitle').textContent = '记录你的' + cat.title;
+  document.getElementById('bookModalCatIcon').textContent = cat.icon;
+  document.getElementById('bookModalCatName').textContent = cat.title;
+  document.getElementById('bookTitleLabel').textContent = cat.title + '名称';
+  document.getElementById('bookAuthorLabel').textContent = cat.creatorLabel || '作者';
+  document.getElementById('bookTitleInput').placeholder = '输入' + cat.title + '名称';
+  document.getElementById('bookAuthorInput').placeholder = '输入' + (cat.creatorLabel || '作者');
+  document.getElementById('bookRatingHeader').textContent = cat.title + '评分';
+  document.getElementById('bookNotesHeader').textContent = (cat.id==='cat_book' ? '读书' : cat.title) + '心得';
+  document.getElementById('bookNotesInput').placeholder = '写下你的' + cat.title + '心得…';
+  document.getElementById('bookIndexLabel').textContent = cat.id==='cat_book' ? '阅读指数' : '完成度';
+
   document.getElementById('bookTitleInput').value = book ? book.title : '';
   document.getElementById('bookAuthorInput').value = book ? (book.author||'') : '';
   document.getElementById('bookNotesInput').value = book ? (book.notes||'') : '';
@@ -3661,7 +3792,7 @@ function closeBookModal() {
 
 async function confirmBook() {
   const title = document.getElementById('bookTitleInput').value.trim();
-  if (!title) { alert('请输入书名'); return; }
+  if (!title) { alert('请输入名称'); return; }
 
   const author = document.getElementById('bookAuthorInput').value.trim();
   const notes = document.getElementById('bookNotesInput').value.trim();
@@ -3689,6 +3820,11 @@ async function confirmBook() {
     coverImageId = null;
   }
 
+  // 沿用原条目分类，新建条目则用当前选中分类
+  const categoryId = editingBookId
+    ? (books.find(b => b.id === editingBookId)?.category || 'cat_book')
+    : currentReadingCategory;
+
   const bookData = {
     id: editingBookId || 'book_' + Date.now(),
     title,
@@ -3697,6 +3833,7 @@ async function confirmBook() {
     readingIndex,
     rating: bookRating,
     notes,
+    category: categoryId,
     createdAt: editingBookId ? (books.find(b=>b.id===editingBookId)?.createdAt || todayStr()) : todayStr(),
   };
 
@@ -3718,6 +3855,121 @@ async function deleteBook(id) {
   if (book.coverImageId) await deleteImage(book.coverImageId).catch(()=>{});
   saveBooks(books.filter(b => b.id !== id));
   renderBooks();
+}
+
+// ==================== 阅读分类管理 ====================
+const READING_CATEGORY_ICONS = ['📖','📕','📗','📘','📙','🎬','🎞️','📺','🎙️','🎧','📰','📄','📑','📚','💬','🗒️','🪶','🎭','🌐','🎮','🏆','✨','💡'];
+let editingCategoryId = null; // 正在编辑/新建的分类 id
+
+function openCategoryManage() {
+  editingCategoryId = null;
+  document.getElementById('categoryEditPanel').classList.add('hidden');
+  document.getElementById('categoryNameInput').value = '';
+  document.getElementById('categoryCreatorInput').value = '';
+  document.getElementById('categoryIconPicker').innerHTML = '';
+  renderCategoryManageList();
+  document.getElementById('categoryManageModal').classList.add('open');
+}
+
+function closeCategoryManage() {
+  document.getElementById('categoryManageModal').classList.remove('open');
+  renderBooks(); // 关闭后刷新 Tab 列表
+}
+
+function renderCategoryManageList() {
+  const list = getReadingCategories();
+  const books = getBooks();
+  const wrap = document.getElementById('categoryManageList');
+  if (!wrap) return;
+  wrap.innerHTML = list.map(c => {
+    const count = books.filter(b => (b.category || 'cat_book') === c.id).length;
+    return `
+    <div class="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2.5">
+      <span class="text-xl">${c.icon}</span>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-semibold text-gray-800 truncate">${escapeHtml(c.title)}</div>
+        <div class="text-[10px] text-gray-400">${c.creatorLabel || '作者'} · ${count} 项${c.builtin?' · 内置':''}</div>
+      </div>
+      <button class="cat-edit-btn px-2 py-1 text-xs text-teal-600 hover:bg-teal-50 rounded-lg" data-id="${c.id}">编辑</button>
+      ${c.builtin ? '' : `<button class="cat-delete-btn px-2 py-1 text-xs text-red-400 hover:bg-red-50 rounded-lg" data-id="${c.id}">删除</button>`}
+    </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('.cat-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => editCategory(btn.dataset.id));
+  });
+  wrap.querySelectorAll('.cat-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteCategory(btn.dataset.id));
+  });
+}
+
+function showCategoryEditPanel(cat) {
+  editingCategoryId = cat ? cat.id : null;
+  const panel = document.getElementById('categoryEditPanel');
+  const picker = document.getElementById('categoryIconPicker');
+  const selectedIcon = cat ? cat.icon : READING_CATEGORY_ICONS[0];
+  if (!editingCategoryId) {
+    picker.dataset.selected = selectedIcon;
+  } else {
+    picker.dataset.selected = selectedIcon;
+  }
+  picker.innerHTML = READING_CATEGORY_ICONS.map(ic => `
+    <button type="button" class="cat-icon-btn w-9 h-9 rounded-xl text-lg flex items-center justify-center ${ic===selectedIcon?'bg-teal-500 text-white':'bg-white border border-gray-200 hover:bg-gray-50'}" data-icon="${ic}">${ic}</button>
+  `).join('');
+  picker.querySelectorAll('.cat-icon-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      picker.querySelectorAll('.cat-icon-btn').forEach(x => x.className = x.className.replace('bg-teal-500 text-white','bg-white border border-gray-200 hover:bg-gray-50'));
+      b.className = 'cat-icon-btn w-9 h-9 rounded-xl text-lg flex items-center justify-center bg-teal-500 text-white';
+      picker.dataset.selected = b.dataset.icon;
+    });
+  });
+  document.getElementById('categoryNameInput').value = cat ? cat.title : '';
+  document.getElementById('categoryCreatorInput').value = cat ? (cat.creatorLabel || '') : '';
+  panel.classList.remove('hidden');
+}
+
+function editCategory(id) {
+  const cat = getReadingCategories().find(c => c.id === id);
+  if (!cat) return;
+  showCategoryEditPanel(cat);
+}
+
+function saveCategoryEdit() {
+  const name = document.getElementById('categoryNameInput').value.trim();
+  if (!name) { alert('请输入分类名称'); return; }
+  const creator = document.getElementById('categoryCreatorInput').value.trim() || '作者';
+  const icon = document.getElementById('categoryIconPicker').dataset.selected || '📖';
+  const list = getReadingCategories();
+  if (editingCategoryId) {
+    const idx = list.findIndex(c => c.id === editingCategoryId);
+    if (idx !== -1) {
+      list[idx] = { ...list[idx], title: name, creatorLabel: creator, icon };
+    }
+  } else {
+    list.push({ id: 'cat_' + Date.now(), title: name, creatorLabel: creator, icon, builtin: false });
+  }
+  saveReadingCategories(list);
+  editingCategoryId = null;
+  document.getElementById('categoryEditPanel').classList.add('hidden');
+  renderCategoryManageList();
+}
+
+function deleteCategory(id) {
+  const list = getReadingCategories();
+  const cat = list.find(c => c.id === id);
+  if (!cat) return;
+  const count = getBooks().filter(b => (b.category || 'cat_book') === id).length;
+  if (count > 0) {
+    if (!confirm(`分类「${cat.title}」下还有 ${count} 条记录，删除后这些记录将自动归入「书籍」。确定继续吗？`)) return;
+    // 把该分类下的条目迁移到书籍分类
+    const books = getBooks().map(b => (b.category || 'cat_book') === id ? { ...b, category: 'cat_book' } : b);
+    saveBooks(books);
+    if (currentReadingCategory === id) currentReadingCategory = 'cat_book';
+  } else {
+    if (!confirm(`确定删除分类「${cat.title}」吗？`)) return;
+  }
+  saveReadingCategories(list.filter(c => c.id !== id));
+  renderCategoryManageList();
 }
 
 // ==================== 事件绑定 ====================
@@ -3813,6 +4065,17 @@ function bindEvents() {
 
   // ===== 阅读记录事件 =====
   document.getElementById('addBookBtn').addEventListener('click', () => openBookModal(null));
+  document.getElementById('manageCategoryBtn').addEventListener('click', openCategoryManage);
+  document.getElementById('categoryManageClose').addEventListener('click', closeCategoryManage);
+  document.getElementById('categoryManageModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeCategoryManage();
+  });
+  document.getElementById('addCategoryBtn').addEventListener('click', () => showCategoryEditPanel(null));
+  document.getElementById('categoryEditCancel').addEventListener('click', () => {
+    editingCategoryId = null;
+    document.getElementById('categoryEditPanel').classList.add('hidden');
+  });
+  document.getElementById('categoryEditSave').addEventListener('click', saveCategoryEdit);
 
   // 封面上传
   const coverUpload = document.getElementById('coverUpload');
