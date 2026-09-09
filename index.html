@@ -164,7 +164,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.3</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.4</button>
       </div>
     </div>
   </header>
@@ -416,13 +416,14 @@
 
     <!-- ===== 自定义板块容器 ===== -->
     <div class="page-content" id="page-custom-template">
-      <div id="customPageContent" class="space-y-3">
-        <!-- 动态渲染笔记卡片 -->
-      </div>
-      <button id="addNoteBtn" class="w-full py-3 mt-4 rounded-xl border-2 border-dashed border-teal-300 text-teal-600 font-semibold text-sm flex items-center justify-center gap-1.5 hover:bg-teal-50 transition active:scale-95">
+      <!-- 顶部添加按钮：与全站「添加xxx」按钮惯例一致，确保首屏可见 -->
+      <button id="addNoteBtn" class="w-full py-3 mb-3 rounded-xl border-2 border-dashed border-teal-300 bg-white/50 text-teal-600 font-semibold text-sm flex items-center justify-center gap-1.5 hover:bg-teal-50 transition active:scale-95">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
         添加笔记
       </button>
+      <div id="customPageContent" class="space-y-3">
+        <!-- 动态渲染笔记卡片 -->
+      </div>
     </div>
   </main>
 
@@ -1255,10 +1256,10 @@ function renderCustomPage(sectionId) {
 
   if (notes.length === 0) {
     container.innerHTML = `
-      <div class="text-center text-gray-400 py-12">
-        <div class="text-4xl mb-3">📝</div>
+      <div class="text-center text-gray-400 py-8">
+        <div class="text-4xl mb-2">📝</div>
         <p class="text-sm">还没有笔记</p>
-        <p class="text-xs mt-1">点击下方按钮添加第一条笔记</p>
+        <p class="text-xs mt-1">点击上方「添加笔记」写下第一条吧</p>
       </div>`;
     return;
   }
