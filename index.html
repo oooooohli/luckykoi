@@ -164,7 +164,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.4</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.5</button>
       </div>
     </div>
   </header>
@@ -2798,10 +2798,16 @@ function renderStudyCheckin() {
   listEl.innerHTML = `
     <div class="flex items-center justify-between mb-2">
       <span class="text-xs text-gray-400">${doneCount}/${subject.chapters.length} 章已完成</span>
-      <button id="addChapterBtn" class="text-xs text-teal-500 font-medium hover:text-teal-600 flex items-center gap-0.5">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
-        添加章节
-      </button>
+      <div class="flex items-center gap-3">
+        <button id="studyBackfillBtn" class="text-xs text-teal-500 font-medium hover:text-teal-600 flex items-center gap-0.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          补卡
+        </button>
+        <button id="addChapterBtn" class="text-xs text-teal-500 font-medium hover:text-teal-600 flex items-center gap-0.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
+          添加章节
+        </button>
+      </div>
     </div>
     ${subject.chapters.map(ch => `
       <div class="study-chapter-item flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition border-2 ${completed[ch.id] ? 'border-teal-300 bg-teal-50' : 'border-gray-100 bg-gray-50'}" data-chapter="${ch.id}">
@@ -2891,6 +2897,139 @@ function renderStudyCheckin() {
       renderQuizStats();
     });
   }
+
+  // 绑定补卡按钮
+  const backfillBtn = document.getElementById('studyBackfillBtn');
+  if (backfillBtn) backfillBtn.addEventListener('click', openStudyBackfill);
+}
+
+// ==================== 学习打卡补卡 ====================
+let backfillSubject = null; // 补卡弹窗当前选中的科目
+
+function openStudyBackfill() {
+  backfillSubject = backfillSubject || studyActiveSubject;
+  const existing = document.getElementById('studyBackfillOverlay');
+  if (existing) existing.remove();
+
+  const today = todayStr();
+  const overlay = document.createElement('div');
+  overlay.id = 'studyBackfillOverlay';
+  overlay.className = 'fixed inset-0 bg-black/40 z-70 flex items-end justify-center';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.innerHTML = `
+    <div class="bg-white rounded-t-3xl w-full max-w-lg p-5 animate-slide-up" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-lg font-bold text-gray-800">📅 学习补卡</h3>
+        <button id="bfClose" class="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="text-xs text-gray-400 mb-4">选择日期和当天学习的章节，记录会补写到对应日期</p>
+
+      <!-- 日期 -->
+      <div class="mb-4">
+        <div class="text-xs text-gray-500 mb-1.5 font-semibold">补卡日期</div>
+        <input type="date" id="bfDateInput" value="${today}" max="${today}" class="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-teal-400 transition">
+      </div>
+
+      <!-- 科目 -->
+      <div class="mb-4">
+        <div class="text-xs text-gray-500 mb-1.5 font-semibold">科目</div>
+        <div class="flex gap-2" id="bfSubjectTabs"></div>
+      </div>
+
+      <!-- 章节 -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs text-gray-500 font-semibold">选择章节</span>
+          <span class="text-[10px] text-gray-300">已完成的章节也可补记到该日期</span>
+        </div>
+        <div class="space-y-1.5" id="bfChapterList"></div>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="bfCancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:bg-gray-50 transition">取消</button>
+        <button id="bfConfirm" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">确认补卡</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  renderBackfillSubjects();
+  renderBackfillChapters();
+
+  overlay.querySelector('#bfClose').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#bfCancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#bfConfirm').addEventListener('click', confirmStudyBackfill);
+}
+
+function renderBackfillSubjects() {
+  const tabs = document.querySelector('#studyBackfillOverlay #bfSubjectTabs');
+  if (!tabs) return;
+  tabs.innerHTML = getSubjects().map(s => `
+    <button class="bf-subject-tab flex-1 py-2 rounded-xl text-xs font-semibold transition ${backfillSubject === s.id ? 'text-white' : 'bg-gray-100 text-gray-500'}" style="${backfillSubject === s.id ? 'background:linear-gradient(135deg,#14b8a6,#0d9488)' : ''}" data-id="${s.id}">${s.title}</button>
+  `).join('');
+  tabs.querySelectorAll('.bf-subject-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      backfillSubject = btn.dataset.id;
+      renderBackfillSubjects();
+      renderBackfillChapters();
+    });
+  });
+}
+
+function renderBackfillChapters() {
+  const wrap = document.querySelector('#studyBackfillOverlay #bfChapterList');
+  if (!wrap) return;
+  const subject = getSubjects().find(s => s.id === backfillSubject);
+  const study = getStudy();
+  const completed = study.completedChapters || {};
+  if (!subject || subject.chapters.length === 0) {
+    wrap.innerHTML = '<p class="text-xs text-gray-300 text-center py-4">该科目暂无章节</p>';
+    return;
+  }
+  wrap.innerHTML = subject.chapters.map(ch => `
+    <label class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition ${completed[ch.id] ? 'border-teal-200 bg-teal-50/50' : 'border-gray-100 bg-gray-50 hover:border-teal-200'}" data-ch="${ch.id}">
+      <input type="checkbox" class="bf-ch-check w-4 h-4 accent-teal-500 flex-shrink-0" data-ch="${ch.id}">
+      <span class="text-sm flex-1 ${completed[ch.id] ? 'text-gray-500' : 'text-gray-700'}">${escapeHtml(ch.name)}</span>
+      ${completed[ch.id] ? '<span class="text-[10px] text-teal-400 flex-shrink-0">已完成</span>' : ''}
+    </label>
+  `).join('');
+  // 整行点击切换勾选
+  wrap.querySelectorAll('label').forEach(l => {
+    l.addEventListener('click', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      const cb = l.querySelector('.bf-ch-check');
+      cb.checked = !cb.checked;
+    });
+  });
+}
+
+function confirmStudyBackfill() {
+  const overlay = document.getElementById('studyBackfillOverlay');
+  if (!overlay) return;
+  const date = overlay.querySelector('#bfDateInput').value;
+  if (!date) { alert('请选择补卡日期'); return; }
+  if (date > todayStr()) { alert('不能选择未来的日期'); return; }
+
+  const checked = [...overlay.querySelectorAll('.bf-ch-check:checked')].map(cb => cb.dataset.ch);
+  if (checked.length === 0) { alert('请至少勾选一个章节'); return; }
+
+  const study = getStudy();
+  if (!study.completedChapters) study.completedChapters = {};
+  if (!study[date]) study[date] = {};
+
+  let newMarks = 0;
+  checked.forEach(chId => {
+    if (!study.completedChapters[chId]) { study.completedChapters[chId] = true; }
+    if (!study[date][chId]) { study[date][chId] = true; newMarks++; }
+  });
+  saveStudy(study);
+  overlay.remove();
+  renderStudyCheckin();
+  renderStudyHistory();
+  renderMonthlySummary();
+  alert(`已补卡 ${newMarks} 条记录到 ${date}`);
 }
 
 // 历史打卡记录
