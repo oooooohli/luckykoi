@@ -164,7 +164,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.5</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.6</button>
       </div>
     </div>
   </header>
@@ -1335,7 +1335,8 @@ function openNoteEditor(sectionId, idx) {
 
   const overlay = document.createElement('div');
   overlay.id = 'noteEditorOverlay';
-  overlay.className = 'fixed inset-0 bg-black/40 z-70 flex items-end justify-center';
+  overlay.className = 'fixed inset-0 bg-black/40 flex items-end justify-center';
+  overlay.style.zIndex = '70';
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) overlay.remove();
   });
@@ -2914,7 +2915,8 @@ function openStudyBackfill() {
   const today = todayStr();
   const overlay = document.createElement('div');
   overlay.id = 'studyBackfillOverlay';
-  overlay.className = 'fixed inset-0 bg-black/40 z-70 flex items-end justify-center';
+  overlay.className = 'fixed inset-0 bg-black/40 flex items-end justify-center';
+  overlay.style.zIndex = '70';
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   overlay.innerHTML = `
     <div class="bg-white rounded-t-3xl w-full max-w-lg p-5 animate-slide-up" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
