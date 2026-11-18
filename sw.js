@@ -1,6 +1,6 @@
 // 幸运鲤的工作台 - Service Worker v5
 // 彻底不缓存任何内容，确保每次打开都是最新版本
-const CACHE = 'luckykoi-v7';
+const CACHE = 'luckykoi-v8';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

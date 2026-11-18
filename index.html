@@ -143,7 +143,11 @@
     <div class="flex-1 overflow-y-auto py-2" id="drawerList">
       <!-- 动态渲染 -->
     </div>
-    <div class="px-4 py-3 border-t border-gray-100">
+    <div class="px-4 py-3 border-t border-gray-100 space-y-2">
+      <button id="backupBtn" class="w-full py-2.5 rounded-xl border-2 border-teal-200 bg-teal-50 text-teal-600 font-semibold text-sm flex items-center justify-center gap-1.5 hover:bg-teal-100 transition active:scale-95">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+        数据备份 / 恢复
+      </button>
       <button id="addSectionBtn" class="w-full py-2.5 rounded-xl border-2 border-dashed border-teal-300 text-teal-600 font-semibold text-sm flex items-center justify-center gap-1.5 hover:bg-teal-50 transition active:scale-95">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14m-7-7h14"/></svg>
         添加事项
@@ -164,7 +168,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.7</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.8</button>
       </div>
     </div>
   </header>
@@ -3057,6 +3061,177 @@ function confirmStudyBackfill() {
   alert(`已补卡 ${newMarks} 条记录到 ${date}`);
 }
 
+// ==================== 数据备份与恢复 ====================
+const BACKUP_KEY_LABELS = {
+  'luckyKoi.checkin': '每日打卡',
+  'luckyKoi.todos': '待办清单',
+  'luckyKoi.sections': '板块配置',
+  'luckyKoi.books': '阅读记录',
+  'luckyKoi.metrics': '自定义指标',
+  'luckyKoi.sleep': '睡眠历史',
+  'luckyKoi.notes': '自定义笔记',
+  'luckyKoi.readingCategories': '阅读分类',
+  'luckyKoi.study': '学习打卡',
+  'luckyKoi.subjects': '章节配置',
+  'luckyKoi.quiz': '刷题数据',
+};
+
+function collectBackupData() {
+  const data = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('luckyKoi.')) data[k] = localStorage.getItem(k);
+  }
+  return data;
+}
+
+function openBackupModal() {
+  const existing = document.getElementById('backupOverlay');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'backupOverlay';
+  overlay.className = 'fixed inset-0 bg-black/40 flex items-end justify-center';
+  overlay.style.zIndex = '70';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.innerHTML = `
+    <div class="bg-white rounded-t-3xl w-full max-w-lg p-5 animate-slide-up" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-lg font-bold text-gray-800">💾 数据备份 / 恢复</h3>
+        <button id="bkClose" class="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">浏览器可能会定期清理网页数据，建议定期导出备份保存到微信收藏 / 备忘录等地方</p>
+
+      <!-- 当前数据概况 -->
+      <div id="backupStats" class="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-500 leading-relaxed"></div>
+
+      <!-- 导出 -->
+      <div class="text-xs text-gray-500 mb-1.5 font-semibold">① 导出备份</div>
+      <div class="flex gap-2 mb-4">
+        <button id="bkCopy" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold text-sm active:scale-95 transition">复制备份内容</button>
+        <button id="bkDownload" class="flex-1 py-3 rounded-xl border border-teal-300 text-teal-600 font-semibold text-sm active:scale-95 transition">下载备份文件</button>
+      </div>
+
+      <!-- 恢复 -->
+      <div class="text-xs text-gray-500 mb-1.5 font-semibold">② 恢复数据（粘贴备份内容）</div>
+      <textarea id="backupTextarea" class="w-full h-32 px-3 py-2 rounded-xl border border-gray-200 text-xs font-mono outline-none focus:border-teal-400 transition resize-none" placeholder="粘贴之前复制的备份内容，或点击下方按钮选择备份文件"></textarea>
+      <div class="flex gap-2 mt-3">
+        <button id="bkImportFile" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 font-semibold text-sm active:scale-95 transition">选择备份文件</button>
+        <button id="bkRestore" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-white font-semibold text-sm active:scale-95 transition">恢复数据</button>
+      </div>
+      <input type="file" id="backupFileInput" accept=".json,.txt,application/json" class="hidden">
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  renderBackupStats();
+
+  overlay.querySelector('#bkClose').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#bkCopy').addEventListener('click', doBackupCopy);
+  overlay.querySelector('#bkDownload').addEventListener('click', doBackupDownload);
+  overlay.querySelector('#bkImportFile').addEventListener('click', () => overlay.querySelector('#backupFileInput').click());
+  overlay.querySelector('#backupFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { overlay.querySelector('#backupTextarea').value = ev.target.result; };
+    reader.readAsText(file);
+  });
+  overlay.querySelector('#bkRestore').addEventListener('click', doBackupRestore);
+}
+
+function renderBackupStats() {
+  const el = document.getElementById('backupStats');
+  if (!el) return;
+  const data = collectBackupData();
+  const keys = Object.keys(data);
+  if (keys.length === 0) {
+    el.innerHTML = '<span class="text-red-500">⚠️ 当前没有任何数据记录</span>';
+    return;
+  }
+  const lines = keys.map(k => {
+    const label = BACKUP_KEY_LABELS[k] || k.replace('luckyKoi.', '');
+    let count = '';
+    try {
+      const v = JSON.parse(data[k]);
+      if (Array.isArray(v)) count = v.length + ' 条';
+      else if (v && typeof v === 'object') count = Object.keys(v).length + ' 项';
+    } catch (e) {}
+    return `<span class="inline-block mr-3">· ${label}${count ? ' ' + count : ''}</span>`;
+  }).join('');
+  el.innerHTML = `<div class="font-semibold text-gray-600 mb-1">当前数据概况：</div>${lines}`;
+}
+
+function buildBackupPayload() {
+  return JSON.stringify({
+    app: 'luckykoi-backup',
+    version: 'v6.8',
+    time: new Date().toISOString(),
+    data: collectBackupData(),
+  });
+}
+
+function doBackupCopy() {
+  const text = buildBackupPayload();
+  const ta = document.getElementById('backupTextarea');
+  const fallback = () => {
+    if (ta) {
+      ta.value = text;
+      ta.focus();
+      ta.select();
+      try { document.execCommand('copy'); alert('备份内容已填入文本框并复制，请粘贴保存到安全的地方'); }
+      catch (e) { alert('自动复制失败，请长按文本框全选复制'); }
+    }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      if (ta) ta.value = text;
+      alert('备份内容已复制，请立即粘贴保存到微信收藏 / 备忘录等地方');
+    }).catch(fallback);
+  } else fallback();
+}
+
+function doBackupDownload() {
+  const now = new Date();
+  const fname = `luckykoi-backup-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.json`;
+  try {
+    const blob = new Blob([buildBackupPayload()], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  } catch (e) {
+    alert('下载失败：' + e.message + '，可改用「复制备份内容」');
+  }
+}
+
+function doBackupRestore() {
+  const ta = document.getElementById('backupTextarea');
+  if (!ta) return;
+  const text = ta.value.trim();
+  if (!text) { alert('请先粘贴备份内容，或选择备份文件'); return; }
+  let payload;
+  try { payload = JSON.parse(text); } catch (e) { alert('备份内容格式不正确，请检查是否完整粘贴'); return; }
+  const data = payload && payload.data ? payload.data : payload;
+  if (!data || typeof data !== 'object' || !Object.keys(data).some(k => k.startsWith('luckyKoi.'))) {
+    alert('备份内容中没有找到应用数据（缺少 luckyKoi.* 字段）');
+    return;
+  }
+  if (!confirm(`将用备份覆盖当前所有数据（共 ${Object.keys(data).length} 项），确定恢复吗？`)) return;
+  try {
+    Object.keys(data).forEach(k => {
+      if (k.startsWith('luckyKoi.')) localStorage.setItem(k, typeof data[k] === 'string' ? data[k] : JSON.stringify(data[k]));
+    });
+    alert('✅ 数据恢复成功，页面即将刷新');
+    location.reload();
+  } catch (e) {
+    alert('恢复失败：' + e.message);
+  }
+}
+
 // 历史打卡记录
 function renderStudyHistory() {
   const container = document.getElementById('studyHistory');
@@ -3220,8 +3395,7 @@ function renderMonthlySummary() {
 }
 
 // 全年汇总（全年学习天数）
-let yearlyViewYear = null;
-function renderYearlySummary() {
+let yearlyViewYear = null;function renderYearlySummary() {
   const labelEl = document.getElementById('yearlyLabel');
   const statsEl = document.getElementById('yearlyStats');
   const barsEl = document.getElementById('yearlyBars');
@@ -4095,6 +4269,9 @@ function bindEvents() {
 
   // 添加事项按钮
   document.getElementById('addSectionBtn').addEventListener('click', () => openSectionModal(null));
+
+  // 数据备份/恢复
+  document.getElementById('backupBtn').addEventListener('click', () => { closeDrawer(); openBackupModal(); });
 
   // 弹窗
   document.getElementById('modalCancel').addEventListener('click', closeSectionModal);
