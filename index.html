@@ -164,7 +164,7 @@
       </div>
       <div class="flex items-center gap-2">
         <span class="text-xs opacity-85" id="headerDate"></span>
-        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.6</button>
+        <button id="forceUpdateBtn" class="text-[10px] opacity-60 hover:opacity-100 underline" title="点击强制更新">v6.7</button>
       </div>
     </div>
   </header>
@@ -385,6 +385,26 @@
         <div id="monthlyStats" class="grid grid-cols-3 gap-2 mb-3"></div>
         <!-- 月历视图 -->
         <div id="monthlyCalendar"></div>
+      </div>
+
+      <!-- 全年汇总 -->
+      <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-gray-700 flex items-center gap-1.5"><span>📈</span> 全年汇总</h3>
+          <div class="flex items-center gap-1">
+            <button id="yearlyPrev" class="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 active:scale-90 transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <span id="yearlyLabel" class="text-sm font-bold text-gray-700 w-14 text-center">—</span>
+            <button id="yearlyNext" class="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 active:scale-90 transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <!-- 全年统计卡片 -->
+        <div id="yearlyStats" class="grid grid-cols-3 gap-2 mb-3"></div>
+        <!-- 全年各月柱状图 -->
+        <div id="yearlyBars"></div>
       </div>
 
       <!-- 刷题正确率 -->
@@ -2761,6 +2781,7 @@ function renderStudy() {
   renderStudyCheckin();
   renderStudyHistory();
   renderMonthlySummary();
+  renderYearlySummary();
   renderQuizStats();
   renderMistakes();
 }
@@ -2846,6 +2867,7 @@ function renderStudyCheckin() {
       renderStudyCheckin();
       renderStudyHistory();
       renderMonthlySummary();
+      renderYearlySummary();
     });
   });
 
@@ -3031,6 +3053,7 @@ function confirmStudyBackfill() {
   renderStudyCheckin();
   renderStudyHistory();
   renderMonthlySummary();
+  renderYearlySummary();
   alert(`已补卡 ${newMarks} 条记录到 ${date}`);
 }
 
@@ -3193,6 +3216,91 @@ function renderMonthlySummary() {
     if (next > cur) return;
     monthlyViewMonth = next;
     renderMonthlySummary();
+  };
+}
+
+// 全年汇总（全年学习天数）
+let yearlyViewYear = null;
+function renderYearlySummary() {
+  const labelEl = document.getElementById('yearlyLabel');
+  const statsEl = document.getElementById('yearlyStats');
+  const barsEl = document.getElementById('yearlyBars');
+  if (!labelEl || !statsEl || !barsEl) return;
+
+  const now = new Date();
+  if (!yearlyViewYear) yearlyViewYear = now.getFullYear();
+
+  // 统计该年度所有有打卡记录的日期
+  const study = getStudy();
+  const yearPrefix = `${yearlyViewYear}-`;
+  const daySet = new Set();      // 有打卡的日期
+  let totalMarks = 0;            // 累计章节打卡条数
+  const monthDays = Array(12).fill(0);
+  Object.keys(study).forEach(date => {
+    if (date === 'completedChapters') return;
+    if (!date.startsWith(yearPrefix)) return;
+    const day = study[date];
+    if (!day || typeof day !== 'object') return;
+    const cnt = Object.keys(day).filter(k => day[k]).length;
+    if (cnt > 0) {
+      daySet.add(date);
+      totalMarks += cnt;
+      monthDays[parseInt(date.slice(5, 7), 10) - 1]++;
+    }
+  });
+
+  const totalDays = daySet.size;
+  const isCurrentYear = yearlyViewYear === now.getFullYear();
+  const yearEnd = new Date(yearlyViewYear, 11, 31);
+  const daysInYear = Math.round((yearEnd - new Date(yearlyViewYear, 0, 1)) / 86400000) + 1;
+  const elapsed = isCurrentYear
+    ? Math.max(1, Math.floor((now - new Date(yearlyViewYear, 0, 1)) / 86400000) + 1)
+    : daysInYear;
+  const rate = elapsed > 0 ? Math.min(100, Math.round((totalDays / elapsed) * 100)) : 0;
+  const monthsElapsed = isCurrentYear ? now.getMonth() + 1 : 12;
+  const avg = monthsElapsed > 0 ? (totalDays / monthsElapsed).toFixed(1) : '0';
+
+  labelEl.textContent = `${yearlyViewYear}年`;
+  statsEl.innerHTML = `
+    <div class="bg-teal-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-teal-600">${totalDays}</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">全年学习天数</div>
+    </div>
+    <div class="bg-cyan-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-cyan-600">${totalMarks}</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">累计章节打卡</div>
+    </div>
+    <div class="bg-emerald-50 rounded-xl p-2.5 text-center">
+      <div class="text-lg font-extrabold text-emerald-600">${rate}%</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">出勤率（已过${elapsed}天）</div>
+    </div>
+  `;
+
+  // 全年 12 个月柱状图
+  const maxDays = Math.max(1, ...monthDays);
+  barsEl.innerHTML = `
+    <div class="flex items-end justify-between gap-1 px-1" style="height:104px">
+      ${monthDays.map((d, i) => {
+        const h = d === 0 ? 4 : Math.max(8, Math.round((d / maxDays) * 72));
+        const isCur = isCurrentYear && i === now.getMonth();
+        return `<div class="flex-1 flex flex-col items-center gap-1">
+          <span class="text-[9px] leading-none ${d > 0 ? 'text-teal-600 font-semibold' : 'text-transparent'}">${d > 0 ? d : '·'}</span>
+          <div class="w-full rounded-t-md ${d > 0 ? 'bg-gradient-to-t from-teal-500 to-cyan-400' : 'bg-gray-100'}" style="height:${h}px"></div>
+          <span class="text-[9px] leading-none ${isCur ? 'text-teal-600 font-bold' : 'text-gray-400'}">${i + 1}月</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <p class="text-xs text-gray-400 text-center mt-2">${totalDays === 0 ? `${yearlyViewYear}年暂无打卡记录` : `${yearlyViewYear}年已学习 <span class="text-teal-600 font-semibold">${totalDays}</span> 天 · 月均 ${avg} 天`}</p>
+  `;
+
+  // 年份切换
+  const prevBtn = document.getElementById('yearlyPrev');
+  const nextBtn = document.getElementById('yearlyNext');
+  if (prevBtn) prevBtn.onclick = () => { yearlyViewYear--; renderYearlySummary(); };
+  if (nextBtn) nextBtn.onclick = () => {
+    if (yearlyViewYear >= now.getFullYear()) return;
+    yearlyViewYear++;
+    renderYearlySummary();
   };
 }
 
